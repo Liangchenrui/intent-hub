@@ -1,0 +1,328 @@
+"""认证模块 - 管理API Key的生成、验证和存储"""
+
+import time
+import uuid
+from functools import wraps
+from typing import Any, Dict, Optional, Set
+
+from flask import jsonify, request
+from intent_hub.utils.logger import logger
+
+from intent_hub.models import ErrorResponse
+
+
+class AuthManager:
+    """API Key认证管理器（内存存储，支持TTL和用户key管理）"""
+
+    # TTL设置为10分钟（秒）
+    KEY_TTL: int = 10 * 60
+
+    def __init__(self):
+        """初始化认证管理器"""
+        # 存储用户到key的映射: {username: {'key': str, 'created_at': float}}
+        self._user_keys: Dict[str, Dict[str, Any]] = {}
+        # 存储key到用户的映射（用于快速验证）: {key: username}
+        self._key_to_user: Dict[str, str] = {}
+        # 从环境变量或配置加载初始keys
+        self._load_initial_keys()
+        # 启动时清理一次过期key
+        self.cleanup_expired_keys()
+
+    def verify_user(self, username: str, password: str) -> bool:
+        """验证用户名和密码
+
+        Args:
+            username: 用户名
+            password: 密码
+
+        Returns:
+            bool: 验证是否通过
+        """
+        from intent_hub.config import Config
+
+        return (
+            username == Config.DEFAULT_USERNAME and password == Config.DEFAULT_PASSWORD
+        )
+
+    def _load_initial_keys(self):
+        """从配置加载初始API keys"""
+        from intent_hub.config import Config
+
+        # 从配置类加载
+        if hasattr(Config, "API_KEYS") and Config.API_KEYS:
+            config_keys = [k.strip() for k in Config.API_KEYS.split(",") if k.strip()]
+            for key in config_keys:
+                self._key_to_user[key] = "__legacy__"
+            logger.info(
+                f"从配置类加载了 {len(config_keys)} 个API keys（兼容模式，无TTL限制）"
+            )
+
+    def generate_key(self, username: str) -> str:
+        """为指定用户生成或获取API key
+
+        Args:
+            username: 用户名
+
+        Returns:
+            str: API key（如果用户已有未过期的key，则返回该key；否则生成新的）
+        """
+        # 清理过期key
+        self.cleanup_expired_keys()
+
+        # 检查用户是否已有key
+        if username in self._user_keys:
+            user_key_info = self._user_keys[username]
+            key = user_key_info["key"]
+            created_at = user_key_info["created_at"]
+
+            # 检查key是否过期
+            if time.time() - created_at < self.KEY_TTL:
+                logger.info(f"用户 {username} 使用现有API key: {key[:8]}...")
+                return key
+            else:
+                # key已过期，删除旧key
+                logger.info(f"用户 {username} 的API key已过期，生成新key")
+                old_key = key
+                if old_key in self._key_to_user:
+                    del self._key_to_user[old_key]
+
+        # 生成新的API key
+        new_key = str(uuid.uuid4())
+        current_time = time.time()
+
+        # 存储用户key信息
+        self._user_keys[username] = {"key": new_key, "created_at": current_time}
+        self._key_to_user[new_key] = username
+
+        logger.info(f"为用户 {username} 生成新的API key: {new_key[:8]}...")
+        return new_key
+
+    def add_key(self, key: str) -> bool:
+        """添加一个API key（兼容方法，用于兼容旧配置）"""
+        if not key or not key.strip():
+            return False
+        key = key.strip()
+        # 添加到兼容映射中（无TTL限制）
+        self._key_to_user[key] = "__legacy__"
+        logger.info(f"添加API key: {key[:8]}...（兼容模式，无TTL限制）")
+        return True
+
+    def remove_key(self, key: str) -> bool:
+        """移除一个API key"""
+        key = key.strip() if key else ""
+        if not key:
+            return False
+
+        # 从key到用户的映射中查找
+        if key in self._key_to_user:
+            username = self._key_to_user[key]
+            # 如果是用户关联的key，也要从用户映射中删除
+            if username != "__legacy__" and username in self._user_keys:
+                if self._user_keys[username].get("key") == key:
+                    del self._user_keys[username]
+            del self._key_to_user[key]
+            logger.info(f"移除API key: {key[:8]}...")
+            return True
+        return False
+
+    def is_valid(self, key: str) -> bool:
+        """验证API key是否有效（检查TTL）"""
+        if not key:
+            return False
+
+        key = key.strip()
+
+        # 检查是否是兼容模式的key（无TTL限制）
+        if key in self._key_to_user and self._key_to_user[key] == "__legacy__":
+            return True
+
+        # 检查是否是用户关联的key
+        if key in self._key_to_user:
+            username = self._key_to_user[key]
+            if username in self._user_keys:
+                user_key_info = self._user_keys[username]
+                created_at = user_key_info["created_at"]
+
+                # 检查是否过期
+                if time.time() - created_at < self.KEY_TTL:
+                    return True
+                else:
+                    # key已过期，清理
+                    self.cleanup_expired_keys()
+                    return False
+
+        return False
+
+    def cleanup_expired_keys(self) -> int:
+        """清理所有过期的key
+
+        Returns:
+            int: 清理的key数量
+        """
+        current_time = time.time()
+        expired_users = []
+
+        # 找出所有过期的用户key
+        for username, key_info in self._user_keys.items():
+            created_at = key_info["created_at"]
+            if current_time - created_at >= self.KEY_TTL:
+                expired_users.append(username)
+
+        # 删除过期的key
+        cleaned_count = 0
+        for username in expired_users:
+            key = self._user_keys[username]["key"]
+            if key in self._key_to_user:
+                del self._key_to_user[key]
+            del self._user_keys[username]
+            cleaned_count += 1
+            logger.info(f"清理过期API key: {key[:8]}... (用户: {username})")
+
+        if cleaned_count > 0:
+            logger.info(f"清理了 {cleaned_count} 个过期的API key")
+
+        return cleaned_count
+
+    def get_all_keys(self) -> Set[str]:
+        """获取所有有效的keys（用于调试，实际生产环境应谨慎使用）"""
+        # 清理过期key
+        self.cleanup_expired_keys()
+        # 返回所有有效的key
+        return set(self._key_to_user.keys())
+
+    def count(self) -> int:
+        """获取当前有效的key数量（不包括过期的）"""
+        # 清理过期key
+        self.cleanup_expired_keys()
+        return len(self._key_to_user)
+
+    def get_user_key(self, username: str) -> Optional[str]:
+        """获取指定用户的API key（如果存在且未过期）
+
+        Args:
+            username: 用户名
+
+        Returns:
+            Optional[str]: API key，如果不存在或已过期则返回None
+        """
+        if username in self._user_keys:
+            key_info = self._user_keys[username]
+            key = key_info["key"]
+            created_at = key_info["created_at"]
+
+            # 检查是否过期
+            if time.time() - created_at < self.KEY_TTL:
+                return key
+
+        return None
+
+
+# 全局认证管理器实例
+_auth_manager: Optional[AuthManager] = None
+
+
+def get_auth_manager() -> AuthManager:
+    """获取全局认证管理器实例（单例模式）"""
+    global _auth_manager
+    if _auth_manager is None:
+        _auth_manager = AuthManager()
+    return _auth_manager
+
+
+def extract_api_key() -> Optional[str]:
+    """从请求中提取API key
+
+    支持以下方式：
+    1. Authorization: Bearer <key>
+    2. X-API-Key: <key>
+    """
+    # 方式1: Authorization Bearer token
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:].strip()
+
+    # 方式2: X-API-Key header
+    api_key = request.headers.get("X-API-Key", "").strip()
+    if api_key:
+        return api_key
+
+    return None
+
+
+def require_auth(f):
+    """认证装饰器 - 要求请求必须提供有效的API key
+
+    如果配置中AUTH_ENABLED=False，则跳过认证
+    """
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # 检查是否启用认证
+        from intent_hub.config import Config
+
+        if not Config.AUTH_ENABLED:
+            # 认证已禁用，直接执行
+            return f(*args, **kwargs)
+
+        auth_manager = get_auth_manager()
+
+        # 提取API key
+        api_key = extract_api_key()
+
+        if not api_key:
+            logger.warning(f"请求缺少API key: {request.path}")
+            return jsonify(
+                ErrorResponse(
+                    error="认证失败",
+                    detail="缺少API key，请在请求头中提供 Authorization: Bearer <key> 或 X-API-Key: <key>",
+                ).dict()
+            ), 401
+
+        # 验证API key（会自动清理过期key）
+        if not auth_manager.is_valid(api_key):
+            logger.warning(
+                f"无效或已过期的API key: {api_key[:8]}... (请求路径: {request.path})"
+            )
+            return jsonify(
+                ErrorResponse(
+                    error="认证失败", detail="无效或已过期的API key，请重新登录获取"
+                ).dict()
+            ), 401
+
+        # 认证通过，继续执行原函数
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
+def require_telestar_auth(f):
+    """Telestar 认证装饰器 - 要求请求必须提供自定义的 Predict key
+
+    如果配置中 PREDICT_AUTH_KEY 为空或 None，则跳过认证
+    """
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # 检查是否启用认证
+        from intent_hub.config import Config
+
+        if not Config.PREDICT_AUTH_KEY:
+            # 认证已禁用，直接执行
+            return f(*args, **kwargs)
+
+        # 提取 Authorization header
+        auth_header = request.headers.get("Authorization", "").strip()
+
+        if auth_header != Config.PREDICT_AUTH_KEY:
+            logger.warning(f"Predict认证失败: {request.path}")
+            return jsonify(
+                ErrorResponse(
+                    error="认证失败",
+                    detail=f"无效的授权信息，请在请求头中提供 Authorization: {Config.PREDICT_AUTH_KEY}",
+                ).dict()
+            ), 401
+
+        # 认证通过，继续执行原函数
+        return f(*args, **kwargs)
+
+    return decorated_function

@@ -1,0 +1,28 @@
+# Web Framework
+flask>=2.3.0
+
+# Data Validation
+pydantic>=2.0.0
+
+# Vector Database
+qdrant-client>=1.7.0
+
+# Numerical Computing
+numpy>=1.24.0
+
+# HuggingFace Remote API (推荐用于生产环境，镜像更小)
+huggingface-hub>=0.20.0
+
+# LLM Integration
+langchain-core>=0.1.0
+langchain-openai>=0.0.5
+# langchain-google-genai>=0.0.6  # 可选：Gemini支持
+
+# ===========================================
+# 可选：本地模型支持（会显著增加镜像体积）
+# 如需启用，请取消下面注释
+# ===========================================
+# --extra-index-url https://download.pytorch.org/whl/cpu
+# torch
+# transformers>=4.30.0
+# sentencepiece>=0.1.99

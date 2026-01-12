@@ -1,0 +1,113 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 虚拟环境
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
+
+# 环境变量和敏感配置
+.env
+.env.local
+.env.*.local
+*.env
+
+# 日志文件
+*.log
+logs/
+
+# ===========================================
+# 项目特定忽略规则
+# ===========================================
+
+# 本地模型文件 - 从 hf-mirror 下载的模型
+intent_hub/models/
+!intent_hub/models/.gitkeep
+
+# 用户配置文件 - 包含敏感信息（API Keys 等）
+intent_hub/settings.json
+
+# 路由配置文件 - 用户自定义的路由数据
+intent_hub/routes_config.json
+
+# ===========================================
+# 大文件和模型文件
+# ===========================================
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.h5
+*.pb
+*.onnx
+*.msgpack
+
+# HuggingFace 缓存
+.cache/
+huggingface/
+
+# ===========================================
+# 操作系统文件
+# ===========================================
+.DS_Store
+Thumbs.db
+*.tmp
+desktop.ini
+
+# ===========================================
+# 测试和开发
+# ===========================================
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# 数据库
+*.db
+*.sqlite
+*.sqlite3
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,509 @@
+<template>
+  <el-container class="layout-container">
+    <el-header class="header-wrapper">
+      <div class="header-content">
+        <div class="brand">
+          <img src="@/assets/logo.png" alt="Intent Hub" class="logo-img" />
+        </div>
+        <div class="user-info">
+          <LanguageSwitcher />
+          <el-button type="danger" @click="handleLogout">{{ $t('common.logout') }}</el-button>
+        </div>
+      </div>
+    </el-header>
+
+    <el-main class="main-wrapper">
+      <div class="page-header">
+        <el-tabs v-model="activeTab" class="nav-tabs" @tab-change="handleTabChange">
+          <el-tab-pane :label="$t('nav.list')" name="list"></el-tab-pane>
+          <el-tab-pane :label="$t('nav.test')" name="test"></el-tab-pane>
+          <el-tab-pane :label="$t('nav.settings')" name="settings"></el-tab-pane>
+        </el-tabs>
+      </div>
+
+      <el-card shadow="never" class="content-card">
+        <div class="toolbar">
+          <div class="search-box">
+            <el-input
+              v-model="searchQuery"
+              :placeholder="$t('agent.searchPlaceholder')"
+              class="search-input"
+              clearable
+              @input="handleSearch"
+              @clear="handleSearch"
+            >
+              <template #prefix>
+                <el-icon><Search /></el-icon>
+              </template>
+            </el-input>
+          </div>
+          <div class="toolbar-actions">
+            <el-button 
+              @click="handleReindex" 
+              :loading="reindexing"
+              type="warning"
+              plain
+              :icon="Refresh"
+            >
+              {{ $t('agent.reindex') }}
+            </el-button>
+            <el-button type="primary" :icon="Plus" @click="handleAdd">{{ $t('agent.add') }}</el-button>
+          </div>
+        </div>
+
+        <el-table 
+          v-loading="loading"
+          :data="agents" 
+          style="width: 100%"
+          class="custom-table"
+          header-cell-class-name="table-header-cell"
+        >
+          <el-table-column prop="id" :label="$t('agent.id')" width="70" align="center" />
+          <el-table-column :label="$t('agent.nameDesc')" min-width="200">
+            <template #default="{ row }">
+              <div class="agent-info">
+                <div class="agent-name">{{ row.name }}</div>
+                <div class="agent-description">{{ row.description || $t('agent.noDescription') }}</div>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="score_threshold" :label="$t('agent.threshold')" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" effect="light">{{ row.score_threshold }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('agent.utterances')" min-width="400">
+            <template #default="{ row }">
+              <div class="utterances-container">
+                <el-tag 
+                  v-for="(text, index) in row.utterances" 
+                  :key="index" 
+                  class="utterance-tag"
+                  size="small"
+                  effect="plain"
+                  round
+                >
+                  {{ text }}
+                </el-tag>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('agent.actions')" width="150" align="center" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="handleEdit(row)">{{ $t('common.edit') }}</el-button>
+              <el-divider direction="vertical" />
+              <el-button link type="danger" @click="handleDelete(row.id)">{{ $t('common.delete') }}</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-card>
+    </el-main>
+
+    <el-dialog
+      v-model="showModal"
+      :title="isEdit ? $t('agent.editTitle') : $t('agent.addTitle')"
+      width="90%"
+      style="max-width: 650px"
+      destroy-on-close
+      class="custom-dialog"
+    >
+      <el-form :model="editForm" label-position="top">
+        <el-form-item :label="$t('agent.nameLabel')" required>
+          <el-input v-model="editForm.name" :placeholder="$t('agent.namePlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="$t('agent.descLabel')">
+          <el-input 
+            v-model="editForm.description" 
+            type="textarea" 
+            :placeholder="$t('agent.descPlaceholder')" 
+            :rows="3" 
+          />
+        </el-form-item>
+        <el-form-item :label="$t('agent.thresholdLabel')">
+          <div class="threshold-container">
+            <el-slider 
+              v-model="editForm.score_threshold" 
+              :min="0" 
+              :max="1" 
+              :step="0.01"
+              style="flex: 1; margin-right: 20px"
+            />
+            <el-input-number 
+              v-model="editForm.score_threshold" 
+              :precision="2" 
+              :step="0.05" 
+              :min="0" 
+              :max="1"
+              size="small"
+            />
+          </div>
+        </el-form-item>
+        <el-form-item>
+          <template #label>
+            <div class="label-row">
+              <span>{{ $t('agent.utteranceLabel') }}</span>
+              <div class="ai-gen-options">
+                <span class="gen-label">{{ $t('agent.genCount') }}:</span>
+                <el-input-number 
+                  v-model="genCount" 
+                  :min="1" 
+                  :max="20" 
+                  size="small"
+                  controls-position="right"
+                  class="gen-count-input"
+                />
+                <el-button 
+                  type="success" 
+                  size="small" 
+                  :loading="generating"
+                  @click="handleGenerateAI"
+                  :icon="MagicStick"
+                >
+                  {{ $t('agent.aiGen') }}
+                </el-button>
+              </div>
+            </div>
+          </template>
+          <el-input 
+            v-model="utterancesText" 
+            type="textarea" 
+            :placeholder="$t('agent.utterancePlaceholder')" 
+            :rows="10" 
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="closeModal">{{ $t('common.cancel') }}</el-button>
+          <el-button type="primary" :loading="saving" @click="handleSave">
+            {{ $t('common.save') }}
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+  </el-container>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted } from 'vue';
+import { debounce } from 'lodash-es';
+import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { Search, Plus, Refresh, MagicStick } from '@element-plus/icons-vue';
+import { getRoutes, searchRoutes, deleteRoute, updateRoute, createRoute, generateUtterances, reindex, type RouteConfig, type GenerateUtterancesRequest } from '../api';
+import LanguageSwitcher from '../components/LanguageSwitcher.vue';
+
+const { t } = useI18n();
+
+const router = useRouter();
+const agents = ref<RouteConfig[]>([]);
+const loading = ref(false);
+const saving = ref(false);
+const generating = ref(false);
+const reindexing = ref(false);
+const genCount = ref(5);
+const searchQuery = ref('');
+const activeTab = ref('list');
+
+const fetchAgents = async (query: string = '') => {
+  loading.value = true;
+  try {
+    const response = query.trim() 
+      ? await searchRoutes(query.trim())
+      : await getRoutes();
+    agents.value = response.data;
+  } catch (error) {
+    ElMessage.error(t('agent.fetchError'));
+  } finally {
+    loading.value = false;
+  }
+};
+
+// 防抖搜索处理
+const handleSearch = debounce(() => {
+  fetchAgents(searchQuery.value);
+}, 300);
+
+onMounted(() => {
+  fetchAgents();
+});
+
+const handleLogout = async () => {
+  try {
+    await ElMessageBox.confirm(t('agent.logoutConfirm'), t('agent.logoutTitle'), { type: 'warning' });
+    localStorage.removeItem('api_key');
+    router.push('/login');
+  } catch (e) {}
+};
+
+const handleTabChange = (tabName: any) => {
+  if (tabName === 'test') {
+    router.push('/test');
+  } else if (tabName === 'settings') {
+    router.push('/settings');
+  }
+};
+
+const showModal = ref(false);
+const isEdit = ref(false);
+const editForm = ref<Partial<RouteConfig>>({
+  id: 0,
+  name: '',
+  description: '',
+  score_threshold: 0.75,
+  utterances: []
+});
+const utterancesText = ref('');
+
+const openModal = (agent?: RouteConfig) => {
+  if (agent) {
+    isEdit.value = true;
+    editForm.value = { ...agent };
+    utterancesText.value = agent.utterances.join('\n');
+  } else {
+    isEdit.value = false;
+    editForm.value = { id: 0, name: '', description: '', score_threshold: 0.75, utterances: [] };
+    utterancesText.value = '';
+  }
+  showModal.value = true;
+};
+
+const closeModal = () => {
+  showModal.value = false;
+};
+
+const handleAdd = () => openModal();
+const handleEdit = (agent: RouteConfig) => openModal(agent);
+
+const handleReindex = async () => {
+  try {
+    await ElMessageBox.confirm(t('agent.reindexConfirm'), t('agent.reindexTitle'));
+    reindexing.value = true;
+    const response = await reindex(true);
+    const { message, routes_count, total_points } = response.data;
+    // 保存全量同步时间戳
+    localStorage.setItem('last_full_reindex', Date.now().toString());
+    ElMessage.success(`${message} (${t('nav.list')}: ${routes_count}, ${t('agent.utterances')}: ${total_points})`);
+    fetchAgents();
+  } catch (e) {} finally { reindexing.value = false; }
+};
+
+const handleGenerateAI = async () => {
+  if (!editForm.value.name) return ElMessage.warning(t('agent.inputNameWarning'));
+  generating.value = true;
+  try {
+    const current = utterancesText.value.split('\n').filter(s => s.trim());
+    const requestData: GenerateUtterancesRequest = {
+      id: editForm.value.id || 0,
+      name: editForm.value.name,
+      count: genCount.value,
+      utterances: current
+    };
+    
+    if (editForm.value.description) {
+      requestData.description = editForm.value.description;
+    }
+    
+    const response = await generateUtterances(requestData);
+    if (response.data.utterances && response.data.utterances.length > 0) {
+      utterancesText.value = response.data.utterances.join('\n');
+    }
+    ElMessage.success(t('agent.aiGenSuccess'));
+  } catch (e) { ElMessage.error(t('agent.aiGenError')); } finally { generating.value = false; }
+};
+
+const handleSave = async () => {
+  if (!editForm.value.name) return ElMessage.warning(t('agent.nameRequired'));
+  saving.value = true;
+  try {
+    const data = {
+      ...editForm.value,
+      utterances: utterancesText.value.split('\n').filter(s => s.trim())
+    } as RouteConfig;
+    isEdit.value ? await updateRoute(data.id, data) : await createRoute(data);
+    // 新增或修改路由后都需要重置全量同步标记
+    localStorage.removeItem('last_full_reindex');
+    if (isEdit.value) {
+      ElMessage.warning(t('agent.syncWarning'));
+    } else {
+      ElMessage.warning(t('agent.addWarning'));
+    }
+    ElMessage.success(t('agent.saveSuccess'));
+    closeModal();
+    fetchAgents();
+  } catch (e) { ElMessage.error(t('agent.saveError')); } finally { saving.value = false; }
+};
+
+const handleDelete = async (id: number) => {
+  try {
+    await ElMessageBox.confirm(t('agent.deleteConfirm'), t('agent.deleteTitle'), { type: 'error' });
+    await deleteRoute(id);
+    localStorage.removeItem('last_full_reindex');
+    ElMessage.success(t('agent.deleteSuccess'));
+    fetchAgents();
+  } catch (e) {}
+};
+</script>
+
+<style scoped>
+.layout-container {
+  min-height: 100vh;
+  background-color: #f5f7fa;
+}
+
+.header-wrapper {
+  background-color: #fff;
+  border-bottom: 1px solid #e6e8eb;
+  padding: 0 40px;
+  height: 64px !important;
+  display: flex;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-content {
+  width: 95%;
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo-img {
+  height: 40px;
+  width: auto;
+}
+
+.main-wrapper {
+  width: 95%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px 0;
+}
+
+.page-header {
+  margin-bottom: 24px;
+}
+
+.nav-tabs :deep(.el-tabs__header) {
+  margin-bottom: 0;
+}
+
+.nav-tabs :deep(.el-tabs__item) {
+  min-width: 120px;
+  padding: 0 5%;
+  justify-content: center;
+  font-size: 15px;
+}
+
+.content-card {
+  border: none;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05) !important;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 40%;
+}
+
+.search-input {
+  width: 100%;
+}
+
+.agent-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agent-name {
+  font-weight: 600;
+  color: #303133;
+}
+
+.agent-description {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.4;
+}
+
+.utterances-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 0;
+}
+
+.utterance-tag {
+  height: auto !important;
+  padding: 4px 10px;
+  white-space: normal;
+  text-align: left;
+  line-height: 1.5;
+}
+
+.threshold-container {
+  display: flex;
+  align-items: center;
+  background: #f8f9fb;
+  padding: 8px 16px;
+  border-radius: 8px;
+}
+
+.label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.ai-gen-options {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gen-label {
+  font-size: 12px;
+  color: #606266;
+}
+
+.gen-count-input {
+  width: 90px;
+}
+
+:deep(.table-header-cell) {
+  background-color: #f8f9fb !important;
+  color: #606266;
+  font-weight: 700;
+}
+
+:deep(.custom-dialog) {
+  border-radius: 16px;
+}
+
+:deep(.el-dialog__header) {
+  margin-right: 0;
+  border-bottom: 1px solid #f0f0f0;
+  padding-bottom: 16px;
+}
+</style>

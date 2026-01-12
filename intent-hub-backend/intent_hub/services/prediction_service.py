@@ -1,0 +1,113 @@
+"""预测服务 - 处理路由预测业务逻辑"""
+
+from typing import Dict, List
+
+from intent_hub.utils.logger import logger
+
+from intent_hub.config import Config
+from intent_hub.core.components import ComponentManager
+from intent_hub.models import PredictRequest, PredictResponse
+
+
+class PredictionService:
+    """预测服务类 - 处理路由预测的核心业务逻辑"""
+
+    def __init__(self, component_manager: ComponentManager):
+        """初始化预测服务
+
+        Args:
+            component_manager: 组件管理器实例
+        """
+        self.component_manager = component_manager
+
+    def predict(self, request: PredictRequest) -> List[PredictResponse]:
+        """执行路由预测，返回所有匹配的路由列表
+
+        Args:
+            request: 预测请求
+
+        Returns:
+            预测响应列表，包含所有相似度大于设定阈值的路由，按分数降序排列
+        """
+        # 确保组件已就绪
+        self.component_manager.ensure_ready()
+
+        encoder = self.component_manager.encoder
+        qdrant_client = self.component_manager.qdrant_client
+        route_manager = self.component_manager.route_manager
+
+        # 1. 向量化
+        query_vector = encoder.encode_single(request.text)
+        logger.debug(f"查询文本: {request.text}, 向量维度: {len(query_vector)}")
+
+        # 2. 相似度检索 (获取较多的候选结果以便过滤)
+        top_k = 20
+        search_results = qdrant_client.search(query_vector, top_k=top_k)
+        logger.debug(f"搜索原始结果数量: {len(search_results)}")
+
+        if not search_results:
+            # 没有找到任何结果，返回默认路由
+            logger.warning(
+                f"搜索未返回任何结果，返回默认路由。查询文本: {request.text}"
+            )
+            return [
+                PredictResponse(
+                    id=Config.DEFAULT_ROUTE_ID,
+                    name=Config.DEFAULT_ROUTE_NAME,
+                    score=None,
+                )
+            ]
+
+        # 3. 按路由ID分组并进行阈值过滤
+        # 因为 Qdrant 返回的是 utterance 级别的匹配，一个路由可能有多个匹配项，取最高分
+        matched_routes: Dict[int, PredictResponse] = {}
+
+        for result in search_results:
+            score = result["score"]
+            payload = result["payload"]
+            route_id = payload[qdrant_client.ROUTE_ID_KEY]
+            route_name = payload[qdrant_client.ROUTE_NAME_KEY]
+
+            # 获取该路由的阈值
+            threshold = route_manager.get_score_threshold(route_id)
+            if threshold is None:
+                threshold = payload.get(qdrant_client.SCORE_THRESHOLD_KEY, 0.75)
+
+            # 阈值校验
+            if score >= threshold:
+                # 如果该路由已在匹配列表中，只保留最高分
+                if (
+                    route_id not in matched_routes
+                    or score > matched_routes[route_id].score
+                ):
+                    matched_routes[route_id] = PredictResponse(
+                        id=route_id, name=route_name, score=float(score)
+                    )
+                    logger.debug(
+                        f"命中匹配: route_id={route_id}, score={score:.4f} >= threshold={threshold}"
+                    )
+            else:
+                logger.debug(
+                    f"未达阈值: route_id={route_id}, score={score:.4f} < threshold={threshold}"
+                )
+
+        # 4. 排序并转换结果
+        sorted_results = sorted(
+            matched_routes.values(),
+            key=lambda x: x.score if x.score is not None else 0,
+            reverse=True,
+        )
+
+        if not sorted_results:
+            # 如果没有路由满足阈值，返回默认路由
+            logger.info(f"没有路由满足阈值要求，返回默认路由。查询文本: {request.text}")
+            return [
+                PredictResponse(
+                    id=Config.DEFAULT_ROUTE_ID,
+                    name=Config.DEFAULT_ROUTE_NAME,
+                    score=None,
+                )
+            ]
+
+        logger.info(f"最终匹配路由数量: {len(sorted_results)}")
+        return sorted_results

@@ -1,0 +1,83 @@
+"""数据模型定义"""
+
+from typing import List, Optional
+
+from pydantic import BaseModel, Field
+
+
+class RoutePayload(BaseModel):
+    """Qdrant中存储的路由载荷结构"""
+
+    route_id: int = Field(..., description="路由ID")
+    route_name: str = Field(..., description="路由名称")
+    utterance: str = Field(..., description="示例语句")
+    score_threshold: float = Field(..., description="相似度阈值")
+
+
+class RouteConfig(BaseModel):
+    """路由配置模型（用于CRUD操作）"""
+
+    id: int = Field(..., description="路由ID")
+    name: str = Field(..., description="路由名称")
+    description: str = Field(default="", description="路由描述")
+    utterances: List[str] = Field(..., description="示例语句列表")
+    score_threshold: float = Field(
+        default=0.75, description="相似度阈值", ge=0.0, le=1.0
+    )
+
+
+class RouteResponse(BaseModel):
+    """路由匹配响应模型"""
+
+    id: int = Field(..., description="路由ID")
+    name: str = Field(..., description="路由名称")
+
+
+class PredictRequest(BaseModel):
+    """预测请求模型"""
+
+    text: str = Field(..., description="待匹配的文本", min_length=1)
+
+
+class PredictResponse(BaseModel):
+    """预测响应模型"""
+
+    id: int = Field(..., description="匹配到的路由ID")
+    name: str = Field(..., description="匹配到的路由名称")
+    score: Optional[float] = Field(None, description="相似度分数")
+
+
+class ErrorResponse(BaseModel):
+    """错误响应模型"""
+
+    error: str = Field(..., description="错误信息")
+    detail: Optional[str] = Field(None, description="错误详情")
+
+
+class LoginRequest(BaseModel):
+    """登录请求模型"""
+
+    username: str = Field(..., description="用户名", min_length=1)
+    password: str = Field(..., description="密码", min_length=1)
+
+
+class LoginResponse(BaseModel):
+    """登录响应模型"""
+
+    api_key: str = Field(..., description="API key")
+    message: str = Field(
+        default="请妥善保管此API key，后续请求需要在请求头中提供",
+        description="提示信息",
+    )
+
+
+class GenerateUtterancesRequest(BaseModel):
+    """生成提问请求模型"""
+
+    id: int = Field(..., description="Agent ID")
+    name: str = Field(..., description="Agent 名称")
+    description: str = Field(default="", description="Agent 描述")
+    count: int = Field(default=5, description="生成的提问数量", gt=0, le=50)
+    utterances: Optional[List[str]] = Field(
+        default=None, description="参考的utterances列表（可选）"
+    )
