@@ -6,7 +6,7 @@
           <img src="@/assets/logo.png" alt="Intent Hub" class="login-logo" />
         </div>
       </template>
-      <el-form :model="{ username, password }" @submit.prevent="handleLogin" label-position="top">
+      <el-form :model="{ sername, password }" @submit.prevent="handleLogin" label-position="top">
         <el-form-item :label="$t('login.username')">
           <el-input 
             v-model="username" 
@@ -50,7 +50,7 @@ import api from '../api';
 const { t } = useI18n();
 
 const username = ref('admin');
-const password = ref('telestar');
+const password = ref('123456');
 const loading = ref(false);
 const error = ref('');
 const router = useRouter();
