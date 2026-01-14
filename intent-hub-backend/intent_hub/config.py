@@ -11,7 +11,7 @@ class Config:
     # Flask配置
     FLASK_HOST: str = "0.0.0.0"
     FLASK_PORT: int = 5000
-    FLASK_DEBUG: bool = False
+    FLASK_DEBUG: bool = True
 
     # Qdrant配置
     # 1. 本地/自建: 填写 QDRANT_URL + QDRANT_COLLECTION
@@ -24,7 +24,9 @@ class Config:
     # 1. 如果 HUGGINGFACE_ACCESS_TOKEN 不为空，尝试使用 HuggingFace Inference API
     # 2. 如果 Token 为空或验证失败，则从 hf-mirror 下载模型到本地
     HUGGINGFACE_ACCESS_TOKEN: Optional[str] = None  # HuggingFace Access Token (可选)
-    HUGGINGFACE_PROVIDER: Optional[str] = None  # 推理服务提供商 (可选，如 "nebius", "hf-inference" 等)
+    HUGGINGFACE_PROVIDER: Optional[str] = (
+        None  # 推理服务提供商 (可选，如 "nebius", "hf-inference" 等)
+    )
     EMBEDDING_MODEL_NAME: str = "Qwen/Qwen3-Embedding-0.6B"  # 模型名称
     EMBEDDING_DEVICE: str = "cpu"  # 本地模型使用的设备 (cpu/cuda/mps)
 
@@ -55,7 +57,9 @@ class Config:
     DEFAULT_PASSWORD: str = "123456"
 
     # LLM配置（通用）
-    LLM_PROVIDER: str = "deepseek"  # 支持的provider: deepseek, openrouter, doubao, qwen, gemini
+    LLM_PROVIDER: str = (
+        "deepseek"  # 支持的provider: deepseek, openrouter, doubao, qwen, gemini
+    )
     LLM_API_KEY: Optional[str] = None
     LLM_BASE_URL: Optional[str] = None
     LLM_MODEL: Optional[str] = None
