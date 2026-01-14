@@ -24,3 +24,19 @@ def analyze_all_overlaps():
     
     results = diagnostic_service.analyze_all_overlaps(threshold)
     return jsonify([r.dict() for r in results]), 200
+
+
+@handle_errors
+def umap_points():
+    """返回用于可视化的 UMAP 2D 点云"""
+    n_neighbors = request.args.get("n_neighbors", 15, type=int)
+    min_dist = request.args.get("min_dist", 0.1, type=float)
+    seed = request.args.get("seed", 42, type=int)
+
+    component_manager = get_component_manager()
+    diagnostic_service = DiagnosticService(component_manager)
+
+    data = diagnostic_service.build_umap_projection(
+        n_neighbors=n_neighbors, min_dist=min_dist, seed=seed
+    )
+    return jsonify(data), 200

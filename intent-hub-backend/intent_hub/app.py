@@ -102,6 +102,13 @@ def analyze_overlap(route_id: int):
     return diagnostics.analyze_overlap(route_id)
 
 
+@app.route("/diagnostics/umap", methods=["GET"])
+@require_auth
+def diagnostics_umap():
+    """UMAP 可视化点云数据"""
+    return diagnostics.umap_points()
+
+
 @app.route("/settings", methods=["GET"])
 @require_auth
 def get_settings():

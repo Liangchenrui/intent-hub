@@ -102,6 +102,26 @@ export interface DiagnosticResult {
 export const getOverlaps = (threshold: number = 0.85) => api.get<DiagnosticResult[]>('/diagnostics/overlap', { params: { threshold } });
 export const getRouteOverlap = (routeId: number, threshold: number = 0.85) => api.get<DiagnosticResult>(`/diagnostics/overlap/${routeId}`, { params: { threshold } });
 
+export interface UmapPoint2D {
+  x: number;
+  y: number;
+  route_id: number;
+  route_name: string;
+  utterance: string;
+}
+
+export interface UmapResponse {
+  points: UmapPoint2D[];
+  meta: {
+    n_points: number;
+    n_neighbors: number;
+    min_dist: number;
+  };
+}
+
+export const getUmapPoints = (params?: { n_neighbors?: number; min_dist?: number; seed?: number }) =>
+  api.get<UmapResponse>('/diagnostics/umap', { params });
+
 export interface ReindexResponse {
   message: string;
   mode: string;

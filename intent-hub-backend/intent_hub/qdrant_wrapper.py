@@ -355,3 +355,41 @@ class IntentHubQdrantClient:
         except Exception as e:
             logger.error(f"获取现有路由ID失败: {e}", exc_info=True)
             raise
+
+    def scroll_all_points(self, with_vectors: bool = True) -> List[Dict[str, Any]]:
+        """遍历 collection 中所有点（用于可视化/诊断等离线分析场景）
+
+        Args:
+            with_vectors: 是否返回向量
+
+        Returns:
+            列表元素结构: {"id": str|int, "vector": [...](可选), "payload": {...}}
+        """
+        try:
+            results: List[Dict[str, Any]] = []
+            offset = None
+            batch_size = 200
+
+            while True:
+                points, next_offset = self.client.scroll(
+                    collection_name=self.collection_name,
+                    limit=batch_size,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=with_vectors,
+                )
+
+                for p in points:
+                    item: Dict[str, Any] = {"id": p.id, "payload": p.payload}
+                    if with_vectors:
+                        item["vector"] = p.vector
+                    results.append(item)
+
+                if next_offset is None:
+                    break
+                offset = next_offset
+
+            return results
+        except Exception as e:
+            logger.error(f"遍历所有向量点失败: {e}", exc_info=True)
+            raise
