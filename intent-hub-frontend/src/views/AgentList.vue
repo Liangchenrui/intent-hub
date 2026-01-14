@@ -76,7 +76,7 @@
             <template #default="{ row }">
               <div class="utterances-container">
                 <el-tag 
-                  v-for="(text, index) in row.utterances" 
+                  v-for="(text, index) in row.utterances.slice(0, 10)" 
                   :key="index" 
                   class="utterance-tag"
                   size="small"
@@ -85,6 +85,28 @@
                 >
                   {{ text }}
                 </el-tag>
+                <el-tooltip
+                  v-if="row.utterances.length > 10"
+                  placement="top"
+                  effect="dark"
+                >
+                  <template #content>
+                    <div class="tooltip-utterances">
+                      <div v-for="(text, idx) in row.utterances" :key="idx" class="tooltip-item">
+                        {{ text }}
+                      </div>
+                    </div>
+                  </template>
+                  <el-tag 
+                    size="small" 
+                    type="info" 
+                    effect="light" 
+                    round 
+                    class="more-tag"
+                  >
+                    +{{ row.utterances.length - 10 }}
+                  </el-tag>
+                </el-tooltip>
               </div>
             </template>
           </el-table-column>
@@ -460,6 +482,28 @@ const handleDelete = async (id: number) => {
   white-space: normal;
   text-align: left;
   line-height: 1.5;
+}
+
+.more-tag {
+  cursor: pointer;
+}
+
+.tooltip-utterances {
+  max-width: 300px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.tooltip-item {
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.tooltip-item:last-child {
+  border-bottom: none;
 }
 
 .threshold-container {
