@@ -33,7 +33,7 @@ export default {
   },
   agent: {
     title: 'Intent Hub',
-    searchPlaceholder: '搜索 Agent 名称、描述或例句...',
+    searchPlaceholder: '搜索 Agent 名称、描述或语料句...',
     reindex: '同步',
     add: '新增',
     id: 'ID',
