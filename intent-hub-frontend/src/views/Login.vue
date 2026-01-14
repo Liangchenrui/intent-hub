@@ -6,7 +6,7 @@
           <img src="@/assets/logo.png" alt="Intent Hub" class="login-logo" />
         </div>
       </template>
-      <el-form :model="{ sername, password }" @submit.prevent="handleLogin" label-position="top">
+      <el-form :model="{ username, password }" @submit.prevent="handleLogin" label-position="top">
         <el-form-item :label="$t('login.username')">
           <el-input 
             v-model="username" 
@@ -68,6 +68,7 @@ const handleLogin = async () => {
     const { api_key } = response.data;
     if (api_key) {
       localStorage.setItem('api_key', api_key);
+      localStorage.removeItem('predict_auth_key'); // 登录时先移除，等进入设置页面后再同步
       router.push('/');
     } else {
       error.value = t('login.serverError');

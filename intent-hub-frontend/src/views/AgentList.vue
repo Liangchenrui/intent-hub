@@ -233,6 +233,7 @@ const handleLogout = async () => {
   try {
     await ElMessageBox.confirm(t('agent.logoutConfirm'), t('agent.logoutTitle'), { type: 'warning' });
     localStorage.removeItem('api_key');
+    localStorage.removeItem('predict_auth_key');
     router.push('/login');
   } catch (e) {}
 };

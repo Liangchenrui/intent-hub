@@ -211,6 +211,12 @@ const fetchSettings = async (showResetMessage = false) => {
       DEFAULT_ROUTE_ID: data.DEFAULT_ROUTE_ID ?? 0,
       DEFAULT_ROUTE_NAME: data.DEFAULT_ROUTE_NAME || 'none'
     };
+    // 将 Predict Key 保存到本地存储，供测试页面使用
+    if (data.PREDICT_AUTH_KEY) {
+      localStorage.setItem('predict_auth_key', data.PREDICT_AUTH_KEY);
+    } else {
+      localStorage.removeItem('predict_auth_key');
+    }
     if (showResetMessage) {
       ElMessage.success(t('settings.resetSuccess'));
     }
@@ -275,6 +281,12 @@ const handleSave = async () => {
         DEFAULT_ROUTE_ID: data.DEFAULT_ROUTE_ID ?? 0,
         DEFAULT_ROUTE_NAME: data.DEFAULT_ROUTE_NAME || 'none'
       };
+      // 将 Predict Key 保存到本地存储，供测试页面使用
+      if (data.PREDICT_AUTH_KEY) {
+        localStorage.setItem('predict_auth_key', data.PREDICT_AUTH_KEY);
+      } else {
+        localStorage.removeItem('predict_auth_key');
+      }
     }
   } catch (error: any) {
     if (error !== 'cancel') {
@@ -287,6 +299,7 @@ const handleSave = async () => {
 
 const handleLogout = () => {
   localStorage.removeItem('api_key');
+  localStorage.removeItem('predict_auth_key');
   router.push('/login');
 };
 

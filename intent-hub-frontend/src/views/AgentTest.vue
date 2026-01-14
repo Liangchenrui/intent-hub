@@ -136,6 +136,7 @@ const hasFullReindex = computed(() => {
 
 const handleLogout = () => {
   localStorage.removeItem('api_key');
+  localStorage.removeItem('predict_auth_key');
   router.push('/login');
 };
 

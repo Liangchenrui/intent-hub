@@ -21,10 +21,13 @@ api.interceptors.request.use((config) => {
     return config;
   }
   
-  // 预测接口使用 telestar 认证
+  // 预测接口鉴权处理
   if (config.url === '/predict') {
-    config.headers['Authorization'] = 'telestar';
-    return config;
+    const predictKey = localStorage.getItem('predict_auth_key');
+    if (predictKey) {
+      config.headers['Authorization'] = predictKey;
+      return config;
+    }
   }
   
   // 其他接口使用 API Key 认证
@@ -87,11 +90,7 @@ export interface ReindexResponse {
 
 export const reindex = (forceFull: boolean = false) => api.post<ReindexResponse>('/reindex', { force_full: forceFull });
 
-export const predict = (text: string) => api.post<PredictResult[]>('/predict', { text }, {
-  headers: {
-    'Authorization': 'telestar',
-  }
-});
+export const predict = (text: string) => api.post<PredictResult[]>('/predict', { text });
 
 export interface Settings {
   // Qdrant配置

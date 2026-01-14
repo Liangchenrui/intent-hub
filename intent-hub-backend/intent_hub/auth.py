@@ -298,7 +298,10 @@ def require_auth(f):
 def require_telestar_auth(f):
     """Telestar 认证装饰器 - 要求请求必须提供自定义的 Predict key
 
-    如果配置中 PREDICT_AUTH_KEY 为空或 None，则跳过认证
+    支持以下优先级的认证方式：
+    1. 配置中的 PREDICT_AUTH_KEY (支持 Bearer, X-API-Key 或 原始格式)
+    2. 如果启用了普通认证，则支持有效的 API Key
+    如果配置中 PREDICT_AUTH_KEY 为空且未启用普通认证，则跳过认证
     """
 
     @wraps(f)
@@ -306,23 +309,44 @@ def require_telestar_auth(f):
         # 检查是否启用认证
         from intent_hub.config import Config
 
-        if not Config.PREDICT_AUTH_KEY:
-            # 认证已禁用，直接执行
+        predict_key = Config.PREDICT_AUTH_KEY
+        auth_enabled = Config.AUTH_ENABLED
+
+        # 如果没有设置 Predict key 且没有启用普通认证，则直接允许
+        if not predict_key and not auth_enabled:
             return f(*args, **kwargs)
 
-        # 提取 Authorization header
-        auth_header = request.headers.get("Authorization", "").strip()
+        # 提取 API key (支持 Bearer 或 X-API-Key)
+        api_key = extract_api_key()
+        # 提取原始 Authorization header (兼容某些旧调用者)
+        raw_auth = request.headers.get("Authorization", "").strip()
 
-        if auth_header != Config.PREDICT_AUTH_KEY:
-            logger.warning(f"Predict认证失败: {request.path}")
-            return jsonify(
-                ErrorResponse(
-                    error="认证失败",
-                    detail=f"无效的授权信息，请在请求头中提供 Authorization: {Config.PREDICT_AUTH_KEY}",
-                ).dict()
-            ), 401
+        # 1. 验证 Predict Key
+        if predict_key:
+            if api_key == predict_key or raw_auth == predict_key:
+                return f(*args, **kwargs)
 
-        # 认证通过，继续执行原函数
-        return f(*args, **kwargs)
+        # 2. 验证普通 API Key (为了方便前端测试)
+        if auth_enabled:
+            auth_manager = get_auth_manager()
+            if api_key and auth_manager.is_valid(api_key):
+                return f(*args, **kwargs)
+
+        # 认证失败
+        logger.warning(f"Predict认证失败: {request.path}")
+        
+        # 构造详细的错误消息
+        error_detail = "无效的授权信息。"
+        if predict_key:
+            error_detail += f"请在请求头中提供有效的 Predict Key (配置值: {predict_key[:2]}***)"
+        if auth_enabled:
+            error_detail += " 或有效的 API Key。"
+
+        return jsonify(
+            ErrorResponse(
+                error="认证失败",
+                detail=error_detail,
+            ).dict()
+        ), 401
 
     return decorated_function
