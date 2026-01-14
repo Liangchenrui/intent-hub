@@ -81,3 +81,29 @@ class GenerateUtterancesRequest(BaseModel):
     utterances: Optional[List[str]] = Field(
         default=None, description="参考的utterances列表（可选）"
     )
+
+
+class ConflictPoint(BaseModel):
+    """冲突点信息"""
+
+    utterance: str = Field(..., description="冲突的语句")
+    similarity: float = Field(..., description="与对方质心的相似度")
+
+
+class RouteOverlap(BaseModel):
+    """路由重叠诊断信息"""
+
+    target_route_id: int = Field(..., description="目标路由ID")
+    target_route_name: str = Field(..., description="目标路由名称")
+    overlap_score: float = Field(..., description="重叠分数（0-1）")
+    conflicting_utterances: List[ConflictPoint] = Field(
+        default_factory=list, description="具体的冲突语句"
+    )
+
+
+class DiagnosticResult(BaseModel):
+    """整体诊断结果"""
+
+    route_id: int = Field(..., description="当前查询路由ID")
+    route_name: str = Field(..., description="当前查询路由名称")
+    overlaps: List[RouteOverlap] = Field(default_factory=list, description="重叠详情")

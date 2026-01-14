@@ -8,6 +8,7 @@ from qdrant_client.models import (
     Distance,
     FieldCondition,
     Filter,
+    PayloadSchemaType,
     PointStruct,
     VectorParams,
 )
@@ -120,6 +121,15 @@ class IntentHubQdrantClient:
                 logger.info(f"Collection创建成功: {self.collection_name}")
             else:
                 logger.info(f"Collection已存在: {self.collection_name}")
+
+            # 确保关键字段有索引 (针对 Qdrant Cloud 的性能或强制要求)
+            self.client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name=self.ROUTE_ID_KEY,
+                field_schema=PayloadSchemaType.INTEGER,
+            )
+            logger.info(f"已确保字段 {self.ROUTE_ID_KEY} 的索引存在")
+
         except Exception as e:
             logger.error(f"Collection初始化失败: {e}", exc_info=True)
             raise
@@ -190,6 +200,51 @@ class IntentHubQdrantClient:
             logger.info(f"成功删除路由ID {route_id} 的所有向量点")
         except Exception as e:
             logger.error(f"删除路由向量点失败: {e}", exc_info=True)
+            raise
+
+    def get_route_vectors(self, route_id: int) -> List[Dict[str, Any]]:
+        """获取指定路由的所有向量点和载荷
+
+        Args:
+            route_id: 路由ID
+
+        Returns:
+            包含vector和payload的列表
+        """
+        try:
+            from qdrant_client.models import MatchValue
+
+            results = []
+            offset = None
+            batch_size = 100
+
+            while True:
+                result = self.client.scroll(
+                    collection_name=self.collection_name,
+                    scroll_filter=Filter(
+                        must=[
+                            FieldCondition(
+                                key=self.ROUTE_ID_KEY, match=MatchValue(value=route_id)
+                            )
+                        ]
+                    ),
+                    limit=batch_size,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=True,
+                )
+
+                points, next_offset = result
+                for point in points:
+                    results.append({"vector": point.vector, "payload": point.payload})
+
+                if next_offset is None:
+                    break
+                offset = next_offset
+
+            return results
+        except Exception as e:
+            logger.error(f"获取路由 {route_id} 的向量失败: {e}", exc_info=True)
             raise
 
     def search(self, query_vector: List[float], top_k: int = 1) -> List[Dict[str, Any]]:

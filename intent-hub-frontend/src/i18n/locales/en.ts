@@ -16,7 +16,22 @@ export default {
   nav: {
     list: 'Agent',
     test: 'Test',
+    diagnostics: 'Diagnostics',
     settings: 'Settings',
+  },
+  diagnostics: {
+    title: 'Semantic Overlap Diagnostics',
+    description: 'Identify potential misjudgment risks by calculating vector space overlap between Agent routes.',
+    refresh: 'Start Scan',
+    threshold: 'Overlap Threshold',
+    noOverlap: 'No significant semantic conflicts detected',
+    overlapDetected: 'Detected {count} potential conflicts',
+    sourceRoute: 'Source Route',
+    targetRoute: 'Conflicting Route',
+    score: 'Overlap Score',
+    conflictingUtterances: 'Conflicting Corpus',
+    details: 'Details',
+    fixing: 'Smart Fix (Coming Soon)',
   },
   login: {
     title: 'Intent Hub Login',

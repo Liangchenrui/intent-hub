@@ -16,7 +16,22 @@ export default {
   nav: {
     list: '智能体',
     test: '测试',
+    diagnostics: '诊断',
     settings: '设置',
+  },
+  diagnostics: {
+    title: '语义重叠诊断',
+    description: '通过计算各 Agent 路由之间的向量空间重叠度，识别潜在的误判风险。',
+    refresh: '开始扫描',
+    threshold: '重叠阈值',
+    noOverlap: '未检测到明显的语义冲突',
+    overlapDetected: '检测到 {count} 组潜在冲突',
+    sourceRoute: '源路由',
+    targetRoute: '冲突对象',
+    score: '重叠度',
+    conflictingUtterances: '冲突语料',
+    details: '详情',
+    fixing: '智能修复 (待开发)',
   },
   login: {
     title: 'Intent Hub 登录',

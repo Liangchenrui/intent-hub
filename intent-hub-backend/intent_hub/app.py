@@ -3,7 +3,15 @@
 from flask import Flask
 
 # 导入API处理函数
-from intent_hub.api import auth, health, prediction, reindex, routes, settings
+from intent_hub.api import (
+    auth,
+    diagnostics,
+    health,
+    prediction,
+    reindex,
+    routes,
+    settings,
+)
 from intent_hub.auth import require_auth
 from intent_hub.config import Config
 from intent_hub.core.components import get_component_manager
@@ -78,6 +86,20 @@ def generate_utterances():
 def reindex_route():
     """重新索引接口"""
     return reindex.reindex()
+
+
+@app.route("/diagnostics/overlap", methods=["GET"])
+@require_auth
+def analyze_all_overlaps():
+    """全局分析所有路由的重叠情况"""
+    return diagnostics.analyze_all_overlaps()
+
+
+@app.route("/diagnostics/overlap/<int:route_id>", methods=["GET"])
+@require_auth
+def analyze_overlap(route_id: int):
+    """分析指定路由与其他路由的重叠情况"""
+    return diagnostics.analyze_overlap(route_id)
 
 
 @app.route("/settings", methods=["GET"])

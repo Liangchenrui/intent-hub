@@ -81,6 +81,27 @@ export const updateRoute = (id: number, data: Partial<RouteConfig>) => api.put<R
 export const deleteRoute = (id: number) => api.delete<{ message: string }>(`/routes/${id}`);
 export const generateUtterances = (data: GenerateUtterancesRequest) => api.post<RouteConfig>('/routes/generate-utterances', data);
 
+export interface ConflictPoint {
+  utterance: string;
+  similarity: number;
+}
+
+export interface RouteOverlap {
+  target_route_id: number;
+  target_route_name: string;
+  overlap_score: number;
+  conflicting_utterances: ConflictPoint[];
+}
+
+export interface DiagnosticResult {
+  route_id: number;
+  route_name: string;
+  overlaps: RouteOverlap[];
+}
+
+export const getOverlaps = (threshold: number = 0.85) => api.get<DiagnosticResult[]>('/diagnostics/overlap', { params: { threshold } });
+export const getRouteOverlap = (routeId: number, threshold: number = 0.85) => api.get<DiagnosticResult>(`/diagnostics/overlap/${routeId}`, { params: { threshold } });
+
 export interface ReindexResponse {
   message: string;
   mode: string;

@@ -17,6 +17,7 @@
         <el-tabs v-model="activeTab" class="nav-tabs" @tab-change="handleTabChange">
           <el-tab-pane :label="$t('nav.list')" name="list"></el-tab-pane>
           <el-tab-pane :label="$t('nav.test')" name="test"></el-tab-pane>
+          <el-tab-pane :label="$t('nav.diagnostics')" name="diagnostics"></el-tab-pane>
           <el-tab-pane :label="$t('nav.settings')" name="settings"></el-tab-pane>
         </el-tabs>
       </div>
@@ -263,6 +264,8 @@ const handleLogout = async () => {
 const handleTabChange = (tabName: any) => {
   if (tabName === 'test') {
     router.push('/test');
+  } else if (tabName === 'diagnostics') {
+    router.push('/diagnostics');
   } else if (tabName === 'settings') {
     router.push('/settings');
   }
