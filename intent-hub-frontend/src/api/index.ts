@@ -90,6 +90,7 @@ export interface RouteOverlap {
   target_route_id: number;
   target_route_name: string;
   overlap_score: number;
+  hausdorff_distance?: number;
   conflicting_utterances: ConflictPoint[];
 }
 
@@ -99,8 +100,21 @@ export interface DiagnosticResult {
   overlaps: RouteOverlap[];
 }
 
-export const getOverlaps = (threshold: number = 0.85) => api.get<DiagnosticResult[]>('/diagnostics/overlap', { params: { threshold } });
+export interface RepairSuggestion {
+  route_id: number;
+  route_name: string;
+  new_utterances: string[];
+  negative_samples: string[];
+  rationalization: string;
+}
+
+export const getOverlaps = (threshold: number = 0.85, refresh: boolean = false) => 
+  api.get<DiagnosticResult[]>('/diagnostics/overlap', { params: { threshold, refresh } });
 export const getRouteOverlap = (routeId: number, threshold: number = 0.85) => api.get<DiagnosticResult>(`/diagnostics/overlap/${routeId}`, { params: { threshold } });
+export const getRepairSuggestions = (sourceRouteId: number, targetRouteId: number) => 
+  api.post<RepairSuggestion>('/diagnostics/repair', { source_route_id: sourceRouteId, target_route_id: targetRouteId });
+export const applyRepair = (routeId: number, utterances: string[]) => 
+  api.post<{ success: boolean }>('/diagnostics/apply-repair', { route_id: routeId, utterances });
 
 export interface UmapPoint2D {
   x: number;
@@ -159,6 +173,7 @@ export interface Settings {
   
   // 提示词配置
   UTTERANCE_GENERATION_PROMPT: string;
+  AGENT_REPAIR_PROMPT: string;
   
   // 认证配置
   PREDICT_AUTH_KEY?: string | null;

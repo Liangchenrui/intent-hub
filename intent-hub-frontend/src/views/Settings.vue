@@ -127,6 +127,9 @@
           <el-form-item :label="$t('settings.prompt')">
             <el-input v-model="settings.UTTERANCE_GENERATION_PROMPT" type="textarea" :rows="4" />
           </el-form-item>
+          <el-form-item :label="$t('settings.repairPrompt')">
+            <el-input v-model="settings.AGENT_REPAIR_PROMPT" type="textarea" :rows="4" />
+          </el-form-item>
 
           <el-divider :content-position="'left'">{{ $t('settings.policyTitle') }}</el-divider>
           <el-form-item :label="$t('settings.predictAuthKey')">
@@ -180,6 +183,7 @@ const settings = ref<Settings>({
   LLM_MODEL: null,
   LLM_TEMPERATURE: 0.7,
   UTTERANCE_GENERATION_PROMPT: '',
+  AGENT_REPAIR_PROMPT: '',
   PREDICT_AUTH_KEY: null,
   BATCH_SIZE: 32,
   DEFAULT_ROUTE_ID: 0,
@@ -207,6 +211,7 @@ const fetchSettings = async (showResetMessage = false) => {
       LLM_MODEL: data.LLM_MODEL ?? null,
       LLM_TEMPERATURE: data.LLM_TEMPERATURE || 0.7,
       UTTERANCE_GENERATION_PROMPT: data.UTTERANCE_GENERATION_PROMPT || '',
+      AGENT_REPAIR_PROMPT: data.AGENT_REPAIR_PROMPT || '',
       PREDICT_AUTH_KEY: data.PREDICT_AUTH_KEY ?? null,
       BATCH_SIZE: data.BATCH_SIZE ?? 32,
       DEFAULT_ROUTE_ID: data.DEFAULT_ROUTE_ID ?? 0,

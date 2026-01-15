@@ -67,6 +67,15 @@ class SyncService:
             )
             total_points += len(route.utterances)
         
+        # 全量同步后强制刷新诊断缓存
+        try:
+            from intent_hub.services.diagnostic_service import DiagnosticService
+            diag_service = DiagnosticService(self.component_manager)
+            diag_service.analyze_all_overlaps(use_cache=False)
+            logger.info("全量同步后已完成诊断缓存刷新")
+        except Exception as e:
+            logger.error(f"全量同步后刷新诊断缓存失败: {e}")
+
         return {
             "message": "全量重新索引完成",
             "mode": "full",
@@ -117,6 +126,15 @@ class SyncService:
                     embeddings=embeddings,
                     score_threshold=route.score_threshold
                 )
+                
+                # 触发增量诊断更新
+                try:
+                    from intent_hub.services.diagnostic_service import DiagnosticService
+                    diag_service = DiagnosticService(self.component_manager)
+                    diag_service.update_route_diagnostics(route.id)
+                except Exception as e:
+                    logger.error(f"增量更新路由 ID {route.id} 的诊断信息失败: {e}")
+
                 total_points += len(route.utterances)
                 new_count += 1
             else:
@@ -136,9 +154,28 @@ class SyncService:
                     embeddings=embeddings,
                     score_threshold=route.score_threshold
                 )
+
+                # 触发增量诊断更新
+                try:
+                    from intent_hub.services.diagnostic_service import DiagnosticService
+                    diag_service = DiagnosticService(self.component_manager)
+                    diag_service.update_route_diagnostics(route.id)
+                except Exception as e:
+                    logger.error(f"增量更新路由 ID {route.id} 的诊断信息失败: {e}")
+
                 total_points += len(route.utterances)
                 updated_count += 1
         
+        # 处理被删除的路由缓存清理
+        if routes_to_delete:
+            try:
+                from intent_hub.services.diagnostic_service import DiagnosticService
+                diag_service = DiagnosticService(self.component_manager)
+                for rid in routes_to_delete:
+                    diag_service.remove_route_from_cache(rid)
+            except Exception as e:
+                logger.error(f"清理已删除路由的诊断缓存失败: {e}")
+
         return {
             "message": "增量重新索引完成",
             "mode": "incremental",

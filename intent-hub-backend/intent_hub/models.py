@@ -96,6 +96,7 @@ class RouteOverlap(BaseModel):
     target_route_id: int = Field(..., description="目标路由ID")
     target_route_name: str = Field(..., description="目标路由名称")
     overlap_score: float = Field(..., description="重叠分数（0-1）")
+    hausdorff_distance: Optional[float] = Field(None, description="Hausdorff 距离")
     conflicting_utterances: List[ConflictPoint] = Field(
         default_factory=list, description="具体的冲突语句"
     )
@@ -107,3 +108,27 @@ class DiagnosticResult(BaseModel):
     route_id: int = Field(..., description="当前查询路由ID")
     route_name: str = Field(..., description="当前查询路由名称")
     overlaps: List[RouteOverlap] = Field(default_factory=list, description="重叠详情")
+
+
+class RepairSuggestion(BaseModel):
+    """修复建议信息"""
+
+    route_id: int = Field(..., description="路由ID")
+    route_name: str = Field(..., description="路由名称")
+    new_utterances: List[str] = Field(..., description="建议新增的强化语句")
+    negative_samples: List[str] = Field(..., description="建议新增的负面约束语句")
+    rationalization: str = Field(..., description="修改理由")
+
+
+class RepairRequest(BaseModel):
+    """修复请求模型"""
+
+    source_route_id: int = Field(..., description="源路由ID")
+    target_route_id: int = Field(..., description="目标路由ID")
+
+
+class ApplyRepairRequest(BaseModel):
+    """应用修复请求模型"""
+
+    route_id: int = Field(..., description="路由ID")
+    utterances: List[str] = Field(..., description="要更新的所有语句")

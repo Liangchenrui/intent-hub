@@ -9,6 +9,7 @@ qdrant-client>=1.7.0
 
 # Numerical Computing
 numpy>=1.24.0
+scipy>=1.10.0
 umap-learn>=0.5.3
 
 # HuggingFace Remote API (推荐用于生产环境，镜像更小)

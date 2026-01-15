@@ -48,7 +48,7 @@
             <el-button 
               type="primary" 
               :icon="Search" 
-              @click="runDiagnostics" 
+              @click="runDiagnostics(true)" 
               :loading="loading"
             >
               {{ $t('diagnostics.refresh') }}
@@ -93,10 +93,12 @@
               <el-table-column prop="target_route_name" :label="$t('diagnostics.targetRoute')" min-width="150" />
               <el-table-column :label="$t('diagnostics.score')" width="120">
                 <template #default="{ row }">
-                  <el-progress 
-                    :percentage="Math.round(row.overlap_score * 100)" 
-                    :status="row.overlap_score > 0.9 ? 'exception' : 'warning'"
-                  />
+                  <el-tooltip :content="'Hausdorff: ' + (row.hausdorff_distance?.toFixed(4) || 'N/A')" placement="top">
+                    <el-progress 
+                      :percentage="Math.round(row.overlap_score * 100)" 
+                      :status="row.overlap_score > 0.9 ? 'exception' : 'warning'"
+                    />
+                  </el-tooltip>
                 </template>
               </el-table-column>
               <el-table-column :label="$t('diagnostics.conflictingUtterances')" min-width="300">
@@ -116,14 +118,83 @@
                 </template>
               </el-table-column>
               <el-table-column width="150">
-                <template #default>
-                  <el-button size="small" disabled>{{ $t('diagnostics.fixing') }}</el-button>
+                <template #default="{ row }">
+                  <el-button 
+                    size="small" 
+                    type="primary" 
+                    plain
+                    @click="handleStartRepair(result, row)"
+                  >
+                    {{ $t('diagnostics.fixing') }}
+                  </el-button>
                 </template>
               </el-table-column>
             </el-table>
           </div>
         </div>
       </el-card>
+
+      <!-- 智能修复对话框 -->
+      <el-dialog
+        v-model="repairDialogVisible"
+        :title="$t('diagnostics.repairTitle')"
+        width="800px"
+        class="repair-dialog"
+      >
+        <div v-loading="repairLoading">
+          <div v-if="suggestion" class="repair-content">
+            <div class="repair-info">
+              <el-alert
+                type="info"
+                :closable="false"
+                show-icon
+                class="rationalization-alert"
+              >
+                <template #title>
+                  <strong>{{ $t('diagnostics.rationalization') }}</strong>
+                </template>
+                {{ suggestion.rationalization }}
+              </el-alert>
+            </div>
+
+            <div class="repair-sections">
+              <div class="repair-section">
+                <h4>{{ $t('diagnostics.newUtterances') }}</h4>
+                <div class="utterance-list">
+                  <div v-for="(utt, idx) in suggestion.new_utterances" :key="idx" class="utterance-item">
+                    <el-checkbox v-model="selectedNewUtterances[idx]">
+                      {{ utt }}
+                    </el-checkbox>
+                  </div>
+                </div>
+              </div>
+
+              <div class="repair-section">
+                <h4>{{ $t('diagnostics.negativeSamples') }}</h4>
+                <div class="utterance-list">
+                  <div v-for="(utt, idx) in suggestion.negative_samples" :key="idx" class="utterance-item">
+                    <el-tag size="small" type="info">{{ utt }}</el-tag>
+                    <span class="neg-desc">{{ $t('diagnostics.negDesc') }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <template #footer>
+          <div class="dialog-footer">
+            <el-button @click="repairDialogVisible = false">{{ $t('common.cancel') }}</el-button>
+            <el-button 
+              type="primary" 
+              @click="applyRepairAction" 
+              :loading="applyingRepair"
+              :disabled="!hasSelectedAny"
+            >
+              {{ $t('diagnostics.applyRepair') }}
+            </el-button>
+          </div>
+        </template>
+      </el-dialog>
     </el-main>
   </el-container>
 </template>
@@ -135,7 +206,17 @@ import { useI18n } from 'vue-i18n';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Search, Warning, CircleCheckFilled } from '@element-plus/icons-vue';
 import * as echarts from 'echarts';
-import { getOverlaps, getUmapPoints, type DiagnosticResult, type UmapPoint2D } from '../api';
+import { 
+  getOverlaps, 
+  getUmapPoints, 
+  getRepairSuggestions, 
+  applyRepair,
+  getRoutes,
+  type DiagnosticResult, 
+  type UmapPoint2D, 
+  type RouteOverlap,
+  type RepairSuggestion
+} from '../api';
 import LanguageSwitcher from '../components/LanguageSwitcher.vue';
 
 const { t } = useI18n();
@@ -163,10 +244,69 @@ const chartInstance = ref<echarts.ECharts | null>(null);
 const colorByRoute = ref<Record<number, string>>({});
 const routeNames = ref<Record<number, string>>({});
 
-const runDiagnostics = async () => {
+// 修复相关状态
+const repairDialogVisible = ref(false);
+const repairLoading = ref(false);
+const applyingRepair = ref(false);
+const suggestion = ref<RepairSuggestion | null>(null);
+const currentSourceRoute = ref<DiagnosticResult | null>(null);
+const selectedNewUtterances = ref<boolean[]>([]);
+
+const hasSelectedAny = computed(() => {
+  return selectedNewUtterances.value.some(v => v);
+});
+
+const handleStartRepair = async (sourceRoute: DiagnosticResult, overlap: RouteOverlap) => {
+  currentSourceRoute.value = sourceRoute;
+  repairDialogVisible.value = true;
+  repairLoading.value = true;
+  suggestion.value = null;
+  selectedNewUtterances.value = [];
+
+  try {
+    const response = await getRepairSuggestions(sourceRoute.route_id, overlap.target_route_id);
+    suggestion.value = response.data;
+    selectedNewUtterances.value = new Array(suggestion.value.new_utterances.length).fill(true);
+  } catch (error: any) {
+    ElMessage.error(t('diagnostics.repairError') || 'Failed to get repair suggestions');
+    repairDialogVisible.value = false;
+  } finally {
+    repairLoading.value = false;
+  }
+};
+
+const applyRepairAction = async () => {
+  if (!suggestion.value || !currentSourceRoute.value) return;
+
+  applyingRepair.value = true;
+  try {
+    // 1. 获取现有路由的所有 utterances
+    const allRoutesRes = await getRoutes();
+    const currentRoute = allRoutesRes.data.find(r => r.id === currentSourceRoute.value?.route_id);
+    
+    if (!currentRoute) throw new Error('Route not found');
+
+    // 2. 结合选中的新例句
+    const newUtterancesToAdd = suggestion.value.new_utterances.filter((_, idx) => selectedNewUtterances.value[idx]);
+    const finalUtterances = [...currentRoute.utterances, ...newUtterancesToAdd];
+
+    // 3. 应用修复
+    await applyRepair(currentSourceRoute.value.route_id, finalUtterances);
+    
+    ElMessage.success(t('diagnostics.repairApplied'));
+    repairDialogVisible.value = false;
+    runDiagnostics(); // 刷新诊断结果
+  } catch (error: any) {
+    ElMessage.error(t('diagnostics.applyError') || 'Failed to apply repair');
+  } finally {
+    applyingRepair.value = false;
+  }
+};
+
+const runDiagnostics = async (refresh: boolean = false) => {
   loading.value = true;
   try {
-    const response = await getOverlaps(threshold.value);
+    const response = await getOverlaps(threshold.value, refresh);
     results.value = response.data;
     if (results.value.length > 0) {
       ElMessage.warning(t('diagnostics.overlapDetected', { count: results.value.length }));
@@ -595,5 +735,48 @@ onMounted(() => {
 .map-chart {
   width: 100%;
   height: 100%;
+}
+
+.repair-dialog :deep(.el-dialog__body) {
+  padding-top: 10px;
+}
+
+.rationalization-alert {
+  margin-bottom: 20px;
+}
+
+.repair-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.repair-section h4 {
+  margin: 0 0 10px 0;
+  color: #303133;
+  font-size: 16px;
+  border-left: 4px solid #409EFF;
+  padding-left: 10px;
+}
+
+.utterance-list {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.utterance-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.neg-desc {
+  font-size: 12px;
+  color: #909399;
+  margin-left: 5px;
 }
 </style>

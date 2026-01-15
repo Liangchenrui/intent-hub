@@ -99,6 +99,27 @@ class Config:
 
 {format_instructions}"""
 
+    AGENT_REPAIR_PROMPT: str = """你是一个 NLU 专家。
+当前存在两个意图在语义上发生了重叠，导致模型难以区分。
+你的任务是为 意图 A 提供修复建议，以增强其特征并避开 意图 B 的语义。
+
+意图 A: {name_a}
+描述 A: {desc_a}
+现有例句 A: {utterances_a}
+
+意图 B: {name_b}
+描述 B: {desc_b}
+
+高频冲突例句: {conflicts}
+
+请按以下 JSON 格式回复：
+{{
+  "new_utterances": ["生成 5 个新例句，强化 A 的特征词，避开 B 的语义"],
+  "negative_samples": ["生成 3 个负面约束例句，即：如果用户这么说，虽然语义接近 A，但绝对不属于 A"],
+  "rationalization": "给出修改理由"
+}}
+不要输出任何其他文本。"""
+
     @classmethod
     def get_settings_path(cls) -> Path:
         """获取设置文件的绝对路径"""
@@ -189,6 +210,7 @@ class Config:
             "DEEPSEEK_MODEL": cls.DEEPSEEK_MODEL,
             # 提示词配置
             "UTTERANCE_GENERATION_PROMPT": cls.UTTERANCE_GENERATION_PROMPT,
+            "AGENT_REPAIR_PROMPT": cls.AGENT_REPAIR_PROMPT,
             # 认证配置
             "AUTH_ENABLED": cls.AUTH_ENABLED,
             "PREDICT_AUTH_KEY": cls.PREDICT_AUTH_KEY,

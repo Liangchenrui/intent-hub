@@ -1,0 +1,24 @@
+{
+  "7": {
+    "route_id": 7,
+    "route_name": "天气服务",
+    "overlaps": [
+      {
+        "target_route_id": 1,
+        "target_route_name": "天气查询助手",
+        "overlap_score": 0.9711013313186437,
+        "hausdorff_distance": 0.8952177672215098,
+        "conflicting_utterances": [
+          {
+            "utterance": "天气",
+            "similarity": 0.9140083803884659
+          },
+          {
+            "utterance": "天气情况",
+            "similarity": 0.916475825565039
+          }
+        ]
+      }
+    ]
+  }
+}

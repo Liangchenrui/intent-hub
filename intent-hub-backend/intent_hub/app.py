@@ -109,6 +109,20 @@ def diagnostics_umap():
     return diagnostics.umap_points()
 
 
+@app.route("/diagnostics/repair", methods=["POST"])
+@require_auth
+def get_repair_suggestions():
+    """获取 LLM 修复建议"""
+    return diagnostics.get_repair_suggestions()
+
+
+@app.route("/diagnostics/apply-repair", methods=["POST"])
+@require_auth
+def apply_repair():
+    """应用修复建议"""
+    return diagnostics.apply_repair()
+
+
 @app.route("/settings", methods=["GET"])
 @require_auth
 def get_settings():

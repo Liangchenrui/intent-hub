@@ -109,6 +109,16 @@ class RouteService:
         )
 
         logger.info(f"成功处理路由: {route.name} (ID: {route.id})")
+
+        # 触发增量诊断更新
+        try:
+            from intent_hub.services.diagnostic_service import DiagnosticService
+            diagnostic_service = DiagnosticService(self.component_manager)
+            diagnostic_service.update_route_diagnostics(route.id)
+            logger.info(f"已完成路由 ID {route.id} 的增量诊断更新")
+        except Exception as e:
+            logger.error(f"增量诊断更新失败: {e}")
+
         return route
 
     def update_route(self, route_id: int, route: RouteConfig) -> RouteConfig:
@@ -130,18 +140,53 @@ class RouteService:
         qdrant_client = self.component_manager.qdrant_client
         route_manager = self.component_manager.route_manager
 
+        # 获取旧配置用于比较
+        old_route = route_manager.get_route(route_id)
+        if not old_route:
+            raise ValueError(f"路由ID {route_id} 不存在")
+
+        # 检查是否需要更新向量索引（语料、名称或阈值变化时需要）
+        utterances_changed = set(old_route.utterances) != set(route.utterances)
+        name_changed = old_route.name != route.name
+        threshold_changed = old_route.score_threshold != route.score_threshold
+        needs_vector_update = utterances_changed or name_changed or threshold_changed
+
         if not route_manager.update_route(route_id, route):
             raise ValueError(f"路由ID {route_id} 不存在")
-        embeddings = encoder.encode(route.utterances)
-        qdrant_client.upsert_route_utterances(
-            route_id=route_id,
-            route_name=route.name,
-            utterances=route.utterances,
-            embeddings=embeddings,
-            score_threshold=route.score_threshold,
-        )
+
+        if needs_vector_update:
+            logger.info(
+                f"检测到路由 ID {route_id} 关键配置已变化 (语料:{utterances_changed}, 名称:{name_changed}, 阈值:{threshold_changed})，正在更新向量索引..."
+            )
+
+            # 如果名称变了，旧的 ID (基于名称生成的 UUID) 会失效，需要先删除旧点
+            if name_changed:
+                logger.info(f"路由名称从 '{old_route.name}' 变更为 '{route.name}'，清理旧向量点")
+                qdrant_client.delete_route(route_id)
+
+            embeddings = encoder.encode(route.utterances)
+            qdrant_client.upsert_route_utterances(
+                route_id=route_id,
+                route_name=route.name,
+                utterances=route.utterances,
+                embeddings=embeddings,
+                score_threshold=route.score_threshold,
+            )
+
+            # 触发增量诊断更新
+            try:
+                from intent_hub.services.diagnostic_service import DiagnosticService
+
+                diagnostic_service = DiagnosticService(self.component_manager)
+                diagnostic_service.update_route_diagnostics(route_id)
+                logger.info(f"已完成路由 ID {route_id} 的增量诊断更新")
+            except Exception as e:
+                logger.error(f"增量诊断更新失败: {e}")
+        else:
+            logger.info(f"路由 ID {route_id} 关键配置未变化，跳过向量和诊断更新")
 
         logger.info(f"成功更新路由: {route.name} (ID: {route_id})")
+
         return route
 
     def delete_route(self, route_id: int) -> None:
@@ -160,18 +205,24 @@ class RouteService:
         if not route_manager.delete_route(route_id):
             raise ValueError(f"路由ID {route_id} 不存在")
 
+        # 从诊断缓存中移除
+        try:
+            from intent_hub.services.diagnostic_service import DiagnosticService
+            diagnostic_service = DiagnosticService(self.component_manager)
+            diagnostic_service.remove_route_from_cache(route_id)
+        except Exception as e:
+            logger.error(f"从诊断缓存中移除路由失败: {e}")
+
         logger.info(f"成功删除路由: ID {route_id} (已重排JSON ID)")
 
-    def generate_and_update_utterances(
-        self, req: GenerateUtterancesRequest
-    ) -> RouteConfig:
-        """生成并更新路由提问
+    def generate_utterances(self, req: GenerateUtterancesRequest) -> RouteConfig:
+        """根据 Agent 信息生成提问列表（不执行持久化，由前端决定是否保存）
 
         Args:
             req: 生成请求
 
         Returns:
-            更新后的路由配置（包含示例utterances在最前面 + 新生成的utterances）
+            生成的路由配置（包含示例utterances在最前面 + 新生成的utterances）
         """
         self.component_manager.ensure_ready()
         route_manager = self.component_manager.route_manager
@@ -180,10 +231,14 @@ class RouteService:
         new_utterances = self._generate_utterances_with_llm(req, example_utterances)
         final_utterances = example_utterances + new_utterances
 
+        logger.info(
+            f"成功为路由 ID {req.id} 生成 {len(new_utterances)} 个新提问，总计 {len(final_utterances)} 个"
+        )
+
         existing_route = route_manager.get_route(req.id) if req.id != 0 else None
 
         if existing_route:
-            updated_route = RouteConfig(
+            return RouteConfig(
                 id=req.id,
                 name=req.name if req.name else existing_route.name,
                 description=req.description
@@ -192,9 +247,7 @@ class RouteService:
                 utterances=final_utterances,
                 score_threshold=existing_route.score_threshold,
             )
-            return self.update_route(req.id, updated_route)
         else:
-            logger.info("路由 ID 为 0，仅生成提问内容，不执行持久化")
             return RouteConfig(
                 id=req.id,
                 name=req.name,
@@ -224,34 +277,9 @@ class RouteService:
             utterances_list = "\n".join([f"- {utt}" for utt in example_utterances])
             reference_utterances_text = f"\n参考示例（请参照这些示例的风格和范围，生成新的句子，但绝对不能重复这些示例）:\n{utterances_list}\n"
 
+        from intent_hub.config import Config
         prompt = PromptTemplate(
-            template="""你是一个资深的用户意图分析专家。你的任务是为特定的 AI Agent 生成高质量的测试数据集（Utterances），用于后续的意图识别和路由分发系统训练。
-
-### Agent 背景信息
-- **Agent 名称**: {name}
-- **功能描述**: {description}
-- **参考示例（请参照这些示例的风格和范围，生成新的句子，但绝对不能重复这些示例）**: {reference_utterances}
-
-### 生成要求
-你需要生成 {count} 条**全新的**用户提问（必须与参考示例不同），请严格遵守以下准则：
-
-1. **分布控制**：
-   - **关键词/短语 (30%)**: 极其简短，如"查天气"、"翻译一下"、"写代码"。这类词对路由最关键。
-   - **简单指令 (40%)**: 直接的命令句，如"帮我写个请假条"、"帮我分析这行代码"。
-   - **真实口语 (30%)**: 包含语气词、不规范表达或略显随意的口语，模拟真实用户输入。
-
-2. **多样性与覆盖面**：
-   - 提取描述中的"核心动词"和"核心名词"，进行交叉组合。
-   - 包含同义词替换（例如：从"预定"扩展到"帮我订一个"、"我想约一个"）。
-   - 必须沿用参考示例的语气和专业深度，但不要重复原话。
-
-3. **路由判别性**：
-   - 生成的提问必须与该 Agent 的核心功能高度相关，避免产生可能导致路由误判到其他通用 Agent 的极其模糊的句子。
-
-4. **格式要求**：
-   - 仅输出生成的问题列表，不要包含任何解释性文字。
-
-{format_instructions}""",
+            template=Config.UTTERANCE_GENERATION_PROMPT,
             input_variables=["name", "description", "count", "reference_utterances"],
             partial_variables={"format_instructions": parser.get_format_instructions()},
         )

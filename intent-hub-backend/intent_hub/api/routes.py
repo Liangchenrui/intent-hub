@@ -98,14 +98,14 @@ def delete_route(route_id: int):
 @handle_errors
 @validate_request(GenerateUtterancesRequest)
 def generate_utterances(req: GenerateUtterancesRequest):
-    """根据Agent信息生成并更新提问列表"""
+    """根据Agent信息生成提问列表（不自动持久化）"""
     component_manager = get_component_manager()
     component_manager.ensure_ready()
 
     route_service = RouteService(component_manager)
 
     try:
-        updated_route = route_service.generate_and_update_utterances(req)
+        updated_route = route_service.generate_utterances(req)
         return jsonify(updated_route.dict()), 200
     except Exception as e:
         return jsonify(ErrorResponse(error="生成提问失败", detail=str(e)).dict()), 500

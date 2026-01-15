@@ -2,12 +2,11 @@
 
 from typing import Optional
 
-from intent_hub.utils.logger import logger
-
 from intent_hub.config import Config
 from intent_hub.encoder import QwenEmbeddingEncoder
 from intent_hub.qdrant_wrapper import IntentHubQdrantClient
 from intent_hub.route_manager import RouteManager
+from intent_hub.utils.logger import logger
 
 
 class ComponentManager:
@@ -57,54 +56,66 @@ class ComponentManager:
         self._route_manager = None
         self.init_components()
 
-    def init_components(self):
-        """初始化所有组件"""
-        if self._initialized:
+    def init_components(self, force: bool = False):
+        """初始化所有组件
+
+        Args:
+            force: 是否强制重新初始化（即使已标记为已初始化）
+        """
+        if self._initialized and not force:
             logger.info("组件已初始化，跳过重复初始化")
             return
 
         # 尝试初始化编码器
-        try:
-            logger.info("正在初始化编码器...")
-            self._encoder = QwenEmbeddingEncoder(
-                model_name=Config.EMBEDDING_MODEL_NAME,
-                device=Config.EMBEDDING_DEVICE,
-                batch_size=Config.BATCH_SIZE,
-                huggingface_token=Config.HUGGINGFACE_ACCESS_TOKEN,
-                huggingface_provider=Config.HUGGINGFACE_PROVIDER,
-            )
-            # 触发初始化以获取维度（会自动判断使用远程API还是本地模型）
-            _ = self._encoder.dimensions
-            mode = "HuggingFace Inference API" if self._encoder.is_remote else "本地模型"
-            logger.info(f"编码器初始化完成，模式: {mode}")
-        except Exception as e:
-            logger.error(f"编码器初始化失败: {e}")
-            # 不再抛出异常，允许应用在编码器不可用时继续启动
+        if self._encoder is None or force:
+            try:
+                logger.info("正在初始化编码器...")
+                self._encoder = QwenEmbeddingEncoder(
+                    model_name=Config.EMBEDDING_MODEL_NAME,
+                    device=Config.EMBEDDING_DEVICE,
+                    batch_size=Config.BATCH_SIZE,
+                    huggingface_token=Config.HUGGINGFACE_ACCESS_TOKEN,
+                    huggingface_provider=Config.HUGGINGFACE_PROVIDER,
+                )
+                # 触发初始化以获取维度
+                _ = self._encoder.dimensions
+                mode = (
+                    "HuggingFace Inference API"
+                    if self._encoder.is_remote
+                    else "本地模型"
+                )
+                logger.info(f"编码器初始化完成，模式: {mode}")
+            except Exception as e:
+                logger.error(f"编码器初始化失败: {e}")
+                self._encoder = None
 
         # 尝试初始化Qdrant客户端
-        try:
-            logger.info("正在初始化Qdrant客户端...")
-            dimensions = self._encoder.dimensions if self._encoder else 1024 # 默认维度或从编码器获取
-            self._qdrant_client = IntentHubQdrantClient(
-                url=Config.QDRANT_URL,
-                collection_name=Config.QDRANT_COLLECTION,
-                dimensions=dimensions,
-                api_key=Config.QDRANT_API_KEY,
-            )
-            logger.info("Qdrant客户端初始化完成")
-        except Exception as e:
-            logger.error(f"Qdrant客户端初始化失败: {e}")
-            # 不再抛出异常
+        if self._qdrant_client is None or force:
+            try:
+                logger.info("正在初始化Qdrant客户端...")
+                dimensions = self._encoder.dimensions if self._encoder else 1024
+                self._qdrant_client = IntentHubQdrantClient(
+                    url=Config.QDRANT_URL,
+                    collection_name=Config.QDRANT_COLLECTION,
+                    dimensions=dimensions,
+                    api_key=Config.QDRANT_API_KEY,
+                )
+                logger.info("Qdrant客户端初始化完成")
+            except Exception as e:
+                logger.error(f"Qdrant客户端初始化失败: {e}")
+                self._qdrant_client = None
 
-        # 初始化路由管理器 (本地文件操作，通常较稳健)
-        try:
-            logger.info("正在初始化路由管理器...")
-            self._route_manager = RouteManager()
-            logger.info("路由管理器初始化完成")
-        except Exception as e:
-            logger.error(f"路由管理器初始化失败: {e}")
+        # 初始化路由管理器
+        if self._route_manager is None or force:
+            try:
+                logger.info("正在初始化路由管理器...")
+                self._route_manager = RouteManager()
+                logger.info("路由管理器初始化完成")
+            except Exception as e:
+                logger.error(f"路由管理器初始化失败: {e}")
+                self._route_manager = None
 
-        # 同步路由数据到Qdrant（如果Qdrant和编码器都准备好了）
+        # 同步路由数据到Qdrant
         if self._qdrant_client and self._encoder and self._route_manager:
             try:
                 logger.info("检查Qdrant数据同步状态...")
@@ -133,8 +144,13 @@ class ComponentManager:
             except Exception as e:
                 logger.error(f"数据同步过程中出现错误: {e}")
 
-        self._initialized = True
-        logger.info("所有组件初始化流程结束 (部分组件可能未就绪)")
+        # 只有当所有关键组件都成功初始化后，才标记为已初始化
+        if self.is_ready():
+            self._initialized = True
+            logger.info("所有组件初始化成功")
+        else:
+            self._initialized = False
+            logger.info("部分组件初始化失败，下次调用将重试")
 
     def ensure_ready(self):
         """确保组件已初始化，如果未初始化则初始化"""
