@@ -24,6 +24,8 @@ class IntentHubQdrantClient:
     ROUTE_NAME_KEY = "route_name"
     UTTERANCE_KEY = "utterance"
     SCORE_THRESHOLD_KEY = "score_threshold"
+    IS_NEGATIVE_KEY = "is_negative"  # 标识是否为负例向量
+    NEGATIVE_THRESHOLD_KEY = "negative_threshold"  # 负例阈值
 
     def __init__(
         self,
@@ -123,12 +125,30 @@ class IntentHubQdrantClient:
                 logger.info(f"Collection已存在: {self.collection_name}")
 
             # 确保关键字段有索引 (针对 Qdrant Cloud 的性能或强制要求)
-            self.client.create_payload_index(
-                collection_name=self.collection_name,
-                field_name=self.ROUTE_ID_KEY,
-                field_schema=PayloadSchemaType.INTEGER,
-            )
-            logger.info(f"已确保字段 {self.ROUTE_ID_KEY} 的索引存在")
+            try:
+                self.client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name=self.ROUTE_ID_KEY,
+                    field_schema=PayloadSchemaType.INTEGER,
+                )
+                logger.info(f"已确保字段 {self.ROUTE_ID_KEY} 的索引存在")
+            except Exception as e:
+                # 如果索引已存在，忽略错误
+                if "already exists" not in str(e).lower() and "duplicate" not in str(e).lower():
+                    logger.warning(f"创建 {self.ROUTE_ID_KEY} 索引时出现警告: {e}")
+
+            # 为 is_negative 字段创建索引（用于负例向量过滤）
+            try:
+                self.client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name=self.IS_NEGATIVE_KEY,
+                    field_schema=PayloadSchemaType.BOOL,
+                )
+                logger.info(f"已确保字段 {self.IS_NEGATIVE_KEY} 的索引存在")
+            except Exception as e:
+                # 如果索引已存在，忽略错误
+                if "already exists" not in str(e).lower() and "duplicate" not in str(e).lower():
+                    logger.warning(f"创建 {self.IS_NEGATIVE_KEY} 索引时出现警告: {e}")
 
         except Exception as e:
             logger.error(f"Collection初始化失败: {e}", exc_info=True)
@@ -203,13 +223,13 @@ class IntentHubQdrantClient:
             raise
 
     def get_route_vectors(self, route_id: int) -> List[Dict[str, Any]]:
-        """获取指定路由的所有向量点和载荷
+        """获取指定路由的所有向量点和载荷（排除负例向量）
 
         Args:
             route_id: 路由ID
 
         Returns:
-            包含vector和payload的列表
+            包含vector和payload的列表（仅包含正例向量）
         """
         try:
             from qdrant_client.models import MatchValue
@@ -226,6 +246,12 @@ class IntentHubQdrantClient:
                             FieldCondition(
                                 key=self.ROUTE_ID_KEY, match=MatchValue(value=route_id)
                             )
+                        ],
+                        # 排除负例向量：is_negative 不为 True
+                        must_not=[
+                            FieldCondition(
+                                key=self.IS_NEGATIVE_KEY, match=MatchValue(value=True)
+                            )
                         ]
                     ),
                     limit=batch_size,
@@ -236,7 +262,11 @@ class IntentHubQdrantClient:
 
                 points, next_offset = result
                 for point in points:
-                    results.append({"vector": point.vector, "payload": point.payload})
+                    # 双重检查：确保不是负例向量（兼容旧数据，如果 is_negative 字段不存在，也认为是正例）
+                    payload = point.payload or {}
+                    is_negative = payload.get(self.IS_NEGATIVE_KEY, False)
+                    if not is_negative:
+                        results.append({"vector": point.vector, "payload": payload})
 
                 if next_offset is None:
                     break
@@ -356,31 +386,54 @@ class IntentHubQdrantClient:
             logger.error(f"获取现有路由ID失败: {e}", exc_info=True)
             raise
 
-    def scroll_all_points(self, with_vectors: bool = True) -> List[Dict[str, Any]]:
+    def scroll_all_points(self, with_vectors: bool = True, exclude_negative: bool = True) -> List[Dict[str, Any]]:
         """遍历 collection 中所有点（用于可视化/诊断等离线分析场景）
 
         Args:
             with_vectors: 是否返回向量
+            exclude_negative: 是否排除负例向量，默认为 True（诊断时应该排除负例）
 
         Returns:
             列表元素结构: {"id": str|int, "vector": [...](可选), "payload": {...}}
         """
         try:
+            from qdrant_client.models import MatchValue
+
             results: List[Dict[str, Any]] = []
             offset = None
             batch_size = 200
 
-            while True:
-                points, next_offset = self.client.scroll(
-                    collection_name=self.collection_name,
-                    limit=batch_size,
-                    offset=offset,
-                    with_payload=True,
-                    with_vectors=with_vectors,
+            # 构建过滤条件
+            scroll_filter = None
+            if exclude_negative:
+                scroll_filter = Filter(
+                    must_not=[
+                        FieldCondition(
+                            key=self.IS_NEGATIVE_KEY, match=MatchValue(value=True)
+                        )
+                    ]
                 )
 
+            while True:
+                scroll_params = {
+                    "collection_name": self.collection_name,
+                    "limit": batch_size,
+                    "offset": offset,
+                    "with_payload": True,
+                    "with_vectors": with_vectors,
+                }
+                if scroll_filter:
+                    scroll_params["scroll_filter"] = scroll_filter
+
+                points, next_offset = self.client.scroll(**scroll_params)
+
                 for p in points:
-                    item: Dict[str, Any] = {"id": p.id, "payload": p.payload}
+                    # 双重检查：确保不是负例向量（如果 exclude_negative 为 True）
+                    payload = p.payload or {}
+                    if exclude_negative and payload.get(self.IS_NEGATIVE_KEY, False):
+                        continue
+                    
+                    item: Dict[str, Any] = {"id": p.id, "payload": payload}
                     if with_vectors:
                         item["vector"] = p.vector
                     results.append(item)
@@ -392,4 +445,133 @@ class IntentHubQdrantClient:
             return results
         except Exception as e:
             logger.error(f"遍历所有向量点失败: {e}", exc_info=True)
+            raise
+
+    def upsert_route_negative_samples(
+        self,
+        route_id: int,
+        route_name: str,
+        negative_samples: List[str],
+        embeddings: List[List[float]],
+        negative_threshold: float,
+    ):
+        """插入或更新路由的负例向量
+
+        Args:
+            route_id: 路由ID
+            route_name: 路由名称
+            negative_samples: 负例语句列表
+            embeddings: 对应的向量列表
+            negative_threshold: 负例相似度阈值
+        """
+        if len(negative_samples) != len(embeddings):
+            raise ValueError("negative_samples和embeddings长度不匹配")
+
+        points = []
+        for negative_sample, embedding in zip(negative_samples, embeddings):
+            # 使用确定性UUID生成point ID，添加negative前缀以区分
+            point_id = str(
+                uuid.uuid5(
+                    uuid.NAMESPACE_DNS,
+                    f"negative:{route_id}:{route_name}:{negative_sample}",
+                )
+            )
+
+            payload = {
+                self.ROUTE_ID_KEY: route_id,
+                self.ROUTE_NAME_KEY: route_name,
+                self.UTTERANCE_KEY: negative_sample,
+                self.IS_NEGATIVE_KEY: True,  # 标识为负例
+                self.NEGATIVE_THRESHOLD_KEY: negative_threshold,
+            }
+
+            points.append(PointStruct(id=point_id, vector=embedding, payload=payload))
+
+        try:
+            self.client.upsert(collection_name=self.collection_name, points=points)
+            logger.info(
+                f"成功更新路由 {route_name} 的 {len(points)} 个负例向量点"
+            )
+        except Exception as e:
+            logger.error(f"更新负例向量点失败: {e}", exc_info=True)
+            raise
+
+    def search_negative_samples(
+        self, query_vector: List[float], top_k: int = 10
+    ) -> List[Dict[str, Any]]:
+        """搜索与查询向量最相似的负例向量
+
+        Args:
+            query_vector: 查询向量
+            top_k: 返回Top K结果
+
+        Returns:
+            搜索结果列表，每个结果包含score和payload
+        """
+        try:
+            from qdrant_client.models import MatchValue
+
+            # 只搜索负例向量
+            results = self.client.query_points(
+                collection_name=self.collection_name,
+                query=query_vector,
+                limit=top_k,
+                query_filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key=self.IS_NEGATIVE_KEY, match=MatchValue(value=True)
+                        )
+                    ]
+                ),
+                with_payload=True,
+            )
+
+            search_results = []
+            for point in results.points:
+                search_results.append(
+                    {
+                        "score": point.score,
+                        "payload": {
+                            self.ROUTE_ID_KEY: point.payload.get(self.ROUTE_ID_KEY),
+                            self.ROUTE_NAME_KEY: point.payload.get(
+                                self.ROUTE_NAME_KEY
+                            ),
+                            self.UTTERANCE_KEY: point.payload.get(self.UTTERANCE_KEY),
+                            self.NEGATIVE_THRESHOLD_KEY: point.payload.get(
+                                self.NEGATIVE_THRESHOLD_KEY, 0.95
+                            ),
+                        },
+                    }
+                )
+
+            return search_results
+        except Exception as e:
+            logger.error(f"负例向量搜索失败: {e}", exc_info=True)
+            raise
+
+    def delete_route_negative_samples(self, route_id: int):
+        """删除指定路由的所有负例向量点
+
+        Args:
+            route_id: 路由ID
+        """
+        try:
+            from qdrant_client.models import MatchValue
+
+            self.client.delete(
+                collection_name=self.collection_name,
+                points_selector=Filter(
+                    must=[
+                        FieldCondition(
+                            key=self.ROUTE_ID_KEY, match=MatchValue(value=route_id)
+                        ),
+                        FieldCondition(
+                            key=self.IS_NEGATIVE_KEY, match=MatchValue(value=True)
+                        ),
+                    ]
+                ),
+            )
+            logger.info(f"成功删除路由ID {route_id} 的所有负例向量点")
+        except Exception as e:
+            logger.error(f"删除负例向量点失败: {e}", exc_info=True)
             raise

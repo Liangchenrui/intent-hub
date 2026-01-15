@@ -211,16 +211,37 @@
                         v-for="(u, idx) in sourceUtterances" 
                         :key="'s-'+idx"
                         class="pool-item"
-                        :class="{ 'is-conflict': isUtteranceInConflict(u, 'source') }"
+                        :class="{ 
+                          'is-conflict': isUtteranceInConflict(u, 'source'),
+                          'is-negative': isUtteranceNegative(u, 'source')
+                        }"
                         draggable="true"
                         @dragstart="handleDragStart(u, currentSourceRoute?.route_id!)"
                       >
                         <div class="item-content">
-                          <span class="utt-text">{{ u }}</span>
+                          <span class="utt-text">
+                            <el-tag 
+                              v-if="isUtteranceNegative(u, 'source')" 
+                              size="small" 
+                              type="warning" 
+                              effect="plain"
+                              style="margin-right: 6px;"
+                            >
+                              负例
+                            </el-tag>
+                            {{ u }}
+                          </span>
                           <div class="item-actions">
                              <el-button :icon="Edit" size="small" link @click="handleModifyUtterance(u, currentSourceRoute?.route_id!)" />
                              <el-button :icon="Delete" size="small" link @click="handleDeleteUtterance(u, currentSourceRoute?.route_id!)" />
-                             <el-button :icon="Close" size="small" link @click="handleSetAsNegative(u, currentSourceRoute?.route_id!)" />
+                             <el-button 
+                               :icon="Close" 
+                               size="small" 
+                               link 
+                               :type="isUtteranceNegative(u, 'source') ? 'warning' : 'default'"
+                               @click="handleSetAsNegative(u, currentSourceRoute?.route_id!)" 
+                               :title="isUtteranceNegative(u, 'source') ? '移除负例' : '添加为负例'"
+                             />
                              <el-button :icon="Rank" size="small" link class="drag-handle" />
                           </div>
                         </div>
@@ -261,15 +282,36 @@
                         v-for="(u, idx) in targetUtterances" 
                         :key="'t-'+idx"
                         class="pool-item"
-                        :class="{ 'is-conflict': isUtteranceInConflict(u, 'target') }"
+                        :class="{ 
+                          'is-conflict': isUtteranceInConflict(u, 'target'),
+                          'is-negative': isUtteranceNegative(u, 'target')
+                        }"
                         draggable="true"
                         @dragstart="handleDragStart(u, currentOverlap?.target_route_id!)"
                       >
                         <div class="item-content">
-                          <span class="utt-text">{{ u }}</span>
+                          <span class="utt-text">
+                            <el-tag 
+                              v-if="isUtteranceNegative(u, 'target')" 
+                              size="small" 
+                              type="warning" 
+                              effect="plain"
+                              style="margin-right: 6px;"
+                            >
+                              负例
+                            </el-tag>
+                            {{ u }}
+                          </span>
                           <div class="item-actions">
                              <el-button :icon="Rank" size="small" link class="drag-handle" />
-                             <el-button :icon="Close" size="small" link @click="handleSetAsNegative(u, currentOverlap?.target_route_id!)" />
+                             <el-button 
+                               :icon="Close" 
+                               size="small" 
+                               link 
+                               :type="isUtteranceNegative(u, 'target') ? 'warning' : 'default'"
+                               @click="handleSetAsNegative(u, currentOverlap?.target_route_id!)" 
+                               :title="isUtteranceNegative(u, 'target') ? '移除负例' : '添加为负例'"
+                             />
                              <el-button :icon="Edit" size="small" link @click="handleModifyUtterance(u, currentOverlap?.target_route_id!)" />
                              <el-button :icon="Delete" size="small" link @click="handleDeleteUtterance(u, currentOverlap?.target_route_id!)" />
                           </div>
@@ -437,6 +479,7 @@ import {
   getRepairSuggestions, 
   applyRepair,
   getRoutes,
+  addNegativeSamples,
   type DiagnosticResult, 
   type UmapPoint2D, 
   type RouteOverlap,
@@ -481,12 +524,23 @@ const selectedConflictingUtterances = ref<boolean[]>([]);
 // 语料列表缓存
 const sourceUtterances = ref<string[]>([]);
 const targetUtterances = ref<string[]>([]);
+// 负例列表缓存
+const sourceNegativeSamples = ref<string[]>([]);
+const targetNegativeSamples = ref<string[]>([]);
 
 const isUtteranceInConflict = (u: string, type: 'source' | 'target') => {
   if (!currentOverlap.value) return false;
   return currentOverlap.value.instance_conflicts.some(c => 
     type === 'source' ? c.source_utterance === u : c.target_utterance === u
   );
+};
+
+const isUtteranceNegative = (u: string, type: 'source' | 'target') => {
+  if (type === 'source') {
+    return sourceNegativeSamples.value.includes(u);
+  } else {
+    return targetNegativeSamples.value.includes(u);
+  }
 };
 
 const fetchRouteUtterances = async () => {
@@ -498,6 +552,8 @@ const fetchRouteUtterances = async () => {
     const target = allRoutesRes.data.find(r => r.id === currentOverlap.value?.target_route_id);
     sourceUtterances.value = source?.utterances || [];
     targetUtterances.value = target?.utterances || [];
+    sourceNegativeSamples.value = source?.negative_samples || [];
+    targetNegativeSamples.value = target?.negative_samples || [];
   } catch (error) {
     console.error('Failed to fetch utterances:', error);
   } finally {
@@ -541,6 +597,10 @@ const handleStartRepair = async (sourceRoute: DiagnosticResult, overlap: RouteOv
   suggestion.value = null;
   selectedNewUtterances.value = [];
   selectedConflictingUtterances.value = [];
+  
+  // 重置负例列表
+  sourceNegativeSamples.value = [];
+  targetNegativeSamples.value = [];
 
   // 获取完整语料列表
   fetchRouteUtterances();
@@ -804,8 +864,78 @@ const handleModifyUtterance = (utterance: string, routeId: number) => {
   pointEditDialogVisible.value = true;
 };
 
-const handleSetAsNegative = (utterance: string, _routeId: number) => {
-  ElMessage.info(`Set as negative feature coming soon for: ${utterance}`);
+const handleSetAsNegative = async (utterance: string, routeId: number) => {
+  if (!utterance || !routeId) return;
+  
+  const isSource = routeId === currentSourceRoute.value?.route_id;
+  const isTarget = routeId === currentOverlap.value?.target_route_id;
+  
+  if (!isSource && !isTarget) return;
+  
+  const currentNegatives = isSource ? sourceNegativeSamples.value : targetNegativeSamples.value;
+  const isAlreadyNegative = currentNegatives.includes(utterance);
+  
+  try {
+    if (isAlreadyNegative) {
+      // 移除负例
+      await ElMessageBox.confirm(
+        t('diagnostics.removeNegativeConfirm', { utterance }) || `确定要将"${utterance}"从负例中移除吗？`,
+        t('common.warning') || '警告',
+        { type: 'warning' }
+      );
+      
+      const updatedNegatives = currentNegatives.filter(u => u !== utterance);
+      await addNegativeSamples(routeId, { negative_samples: updatedNegatives });
+      
+      if (isSource) {
+        sourceNegativeSamples.value = updatedNegatives;
+      } else {
+        targetNegativeSamples.value = updatedNegatives;
+      }
+      
+      ElMessage.success(t('diagnostics.negativeRemoved') || '已从负例中移除');
+    } else {
+      // 添加负例
+      await ElMessageBox.confirm(
+        t('diagnostics.addNegativeConfirm', { utterance }) || `确定要将"${utterance}"添加为负例吗？\n负例用于排除不应该匹配到该路由的查询。\n注意：该语料将从正向例子中自动移除。`,
+        t('diagnostics.addNegativeTitle') || '添加负例',
+        { type: 'info' }
+      );
+      
+      // 1. 从正向例子中移除
+      let updatedUtterances: string[];
+      if (isSource) {
+        updatedUtterances = sourceUtterances.value.filter(u => u !== utterance);
+        sourceUtterances.value = updatedUtterances;
+      } else {
+        updatedUtterances = targetUtterances.value.filter(u => u !== utterance);
+        targetUtterances.value = updatedUtterances;
+      }
+      
+      // 2. 更新后端的 utterances（移除正例）
+      await applyRepair(routeId, updatedUtterances);
+      
+      // 3. 添加到负例列表
+      const updatedNegatives = [...currentNegatives, utterance];
+      await addNegativeSamples(routeId, { negative_samples: updatedNegatives });
+      
+      if (isSource) {
+        sourceNegativeSamples.value = updatedNegatives;
+      } else {
+        targetNegativeSamples.value = updatedNegatives;
+      }
+      
+      ElMessage.success(t('diagnostics.negativeAdded') || '已添加为负例，并从正向例子中移除');
+    }
+    
+    // 标记为已修改，提示用户重新检测
+    isDirty.value = true;
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('Failed to update negative samples:', error);
+      ElMessage.error(t('diagnostics.negativeUpdateError') || '更新负例失败');
+    }
+  }
 };
 
 // 拖拽移动语料逻辑
@@ -1794,6 +1924,20 @@ onMounted(() => {
 .pool-item.is-conflict .utt-text {
   color: #c45656;
   font-weight: 500;
+}
+
+.pool-item.is-negative {
+  border-left: 4px solid #e6a23c;
+  background: #fef8f0;
+}
+
+.pool-item.is-negative .utt-text {
+  color: #b88230;
+}
+
+.pool-item.is-conflict.is-negative {
+  border-left: 4px solid #f56c6c;
+  background: linear-gradient(to right, #fff8f7 0%, #fef8f0 100%);
 }
 
 .pool-item:hover {

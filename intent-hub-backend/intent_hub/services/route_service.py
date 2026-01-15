@@ -99,6 +99,8 @@ class RouteService:
             logger.info(f"模式：更新现有路由 (ID: {route.id})")
 
         route_manager.add_route(route)
+        
+        # 1. 处理正例向量
         embeddings = encoder.encode(route.utterances)
         qdrant_client.upsert_route_utterances(
             route_id=route.id,
@@ -107,6 +109,28 @@ class RouteService:
             embeddings=embeddings,
             score_threshold=route.score_threshold,
         )
+
+        # 2. 处理负例向量
+        if route.negative_samples:
+            # 先删除旧的负例向量
+            qdrant_client.delete_route_negative_samples(route.id)
+            
+            # 生成负例向量并插入
+            negative_embeddings = encoder.encode(route.negative_samples)
+            negative_threshold = getattr(route, 'negative_threshold', 0.95)
+            qdrant_client.upsert_route_negative_samples(
+                route_id=route.id,
+                route_name=route.name,
+                negative_samples=route.negative_samples,
+                embeddings=negative_embeddings,
+                negative_threshold=negative_threshold,
+            )
+            logger.info(
+                f"成功处理路由 {route.name} 的 {len(route.negative_samples)} 个负例"
+            )
+        else:
+            # 如果没有负例，删除可能存在的旧负例向量
+            qdrant_client.delete_route_negative_samples(route.id)
 
         logger.info(f"成功处理路由: {route.name} (ID: {route.id})")
 
@@ -149,14 +173,31 @@ class RouteService:
         utterances_changed = set(old_route.utterances) != set(route.utterances)
         name_changed = old_route.name != route.name
         threshold_changed = old_route.score_threshold != route.score_threshold
-        needs_vector_update = utterances_changed or name_changed or threshold_changed
+        negative_samples_changed = (
+            set(getattr(old_route, 'negative_samples', [])) 
+            != set(getattr(route, 'negative_samples', []))
+        )
+        negative_threshold_changed = (
+            getattr(old_route, 'negative_threshold', 0.95)
+            != getattr(route, 'negative_threshold', 0.95)
+        )
+        needs_vector_update = (
+            utterances_changed 
+            or name_changed 
+            or threshold_changed 
+            or negative_samples_changed 
+            or negative_threshold_changed
+        )
 
         if not route_manager.update_route(route_id, route):
             raise ValueError(f"路由ID {route_id} 不存在")
 
         if needs_vector_update:
             logger.info(
-                f"检测到路由 ID {route_id} 关键配置已变化 (语料:{utterances_changed}, 名称:{name_changed}, 阈值:{threshold_changed})，正在更新向量索引..."
+                f"检测到路由 ID {route_id} 关键配置已变化 "
+                f"(语料:{utterances_changed}, 名称:{name_changed}, 阈值:{threshold_changed}, "
+                f"负例:{negative_samples_changed}, 负例阈值:{negative_threshold_changed})，"
+                f"正在更新向量索引..."
             )
 
             # 如果名称变了，旧的 ID (基于名称生成的 UUID) 会失效，需要先删除旧点
@@ -164,6 +205,7 @@ class RouteService:
                 logger.info(f"路由名称从 '{old_route.name}' 变更为 '{route.name}'，清理旧向量点")
                 qdrant_client.delete_route(route_id)
 
+            # 1. 更新正例向量
             embeddings = encoder.encode(route.utterances)
             qdrant_client.upsert_route_utterances(
                 route_id=route_id,
@@ -172,6 +214,29 @@ class RouteService:
                 embeddings=embeddings,
                 score_threshold=route.score_threshold,
             )
+
+            # 2. 更新负例向量
+            negative_samples = getattr(route, 'negative_samples', [])
+            if negative_samples:
+                # 先删除旧的负例向量
+                qdrant_client.delete_route_negative_samples(route_id)
+                
+                # 生成负例向量并插入
+                negative_embeddings = encoder.encode(negative_samples)
+                negative_threshold = getattr(route, 'negative_threshold', 0.95)
+                qdrant_client.upsert_route_negative_samples(
+                    route_id=route_id,
+                    route_name=route.name,
+                    negative_samples=negative_samples,
+                    embeddings=negative_embeddings,
+                    negative_threshold=negative_threshold,
+                )
+                logger.info(
+                    f"成功更新路由 {route.name} 的 {len(negative_samples)} 个负例"
+                )
+            else:
+                # 如果没有负例，删除可能存在的旧负例向量
+                qdrant_client.delete_route_negative_samples(route_id)
 
             # 同步触发增量诊断更新
             try:
@@ -201,9 +266,18 @@ class RouteService:
         self.component_manager.ensure_ready()
 
         route_manager = self.component_manager.route_manager
+        qdrant_client = self.component_manager.qdrant_client
 
         if not route_manager.delete_route(route_id):
             raise ValueError(f"路由ID {route_id} 不存在")
+
+        # 从Qdrant中删除路由的所有向量（包括正例和负例）
+        try:
+            qdrant_client.delete_route(route_id)
+            qdrant_client.delete_route_negative_samples(route_id)
+            logger.info(f"成功从Qdrant删除路由 {route_id} 的所有向量点")
+        except Exception as e:
+            logger.error(f"从Qdrant删除路由向量失败: {e}")
 
         # 从诊断缓存中移除
         try:
@@ -245,7 +319,9 @@ class RouteService:
                 if req.description
                 else existing_route.description,
                 utterances=final_utterances,
+                negative_samples=getattr(existing_route, 'negative_samples', []),
                 score_threshold=existing_route.score_threshold,
+                negative_threshold=getattr(existing_route, 'negative_threshold', 0.95),
             )
         else:
             return RouteConfig(
@@ -253,7 +329,9 @@ class RouteService:
                 name=req.name,
                 description=req.description,
                 utterances=final_utterances,
+                negative_samples=[],
                 score_threshold=0.75,  # 默认阈值
+                negative_threshold=0.95,  # 默认负例阈值
             )
 
     def _generate_utterances_with_llm(

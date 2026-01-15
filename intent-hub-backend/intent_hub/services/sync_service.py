@@ -56,7 +56,9 @@ class SyncService:
         qdrant_client.delete_all()
         
         total_points = 0
+        total_negative_points = 0
         for route in config_routes:
+            # 处理正例向量
             embeddings = encoder.encode(route.utterances)
             qdrant_client.upsert_route_utterances(
                 route_id=route.id,
@@ -66,6 +68,23 @@ class SyncService:
                 score_threshold=route.score_threshold
             )
             total_points += len(route.utterances)
+            
+            # 处理负例向量
+            negative_samples = getattr(route, 'negative_samples', [])
+            if negative_samples:
+                negative_embeddings = encoder.encode(negative_samples)
+                negative_threshold = getattr(route, 'negative_threshold', 0.95)
+                qdrant_client.upsert_route_negative_samples(
+                    route_id=route.id,
+                    route_name=route.name,
+                    negative_samples=negative_samples,
+                    embeddings=negative_embeddings,
+                    negative_threshold=negative_threshold,
+                )
+                total_negative_points += len(negative_samples)
+            else:
+                # 确保删除可能存在的旧负例向量
+                qdrant_client.delete_route_negative_samples(route.id)
         
         # 全量同步后同步启动全量诊断，确保数据一致性
         try:
@@ -80,7 +99,8 @@ class SyncService:
             "message": "全量重新索引完成",
             "mode": "full",
             "routes_count": len(config_routes),
-            "total_points": total_points
+            "total_points": total_points,
+            "total_negative_points": total_negative_points
         }
     
     def _incremental_reindex(
@@ -103,6 +123,7 @@ class SyncService:
         for route_id in routes_to_delete:
             logger.info(f"删除不再存在的路由: {route_id}")
             qdrant_client.delete_route(route_id)
+            qdrant_client.delete_route_negative_samples(route_id)
             deleted_count += 1
         
         # 5. 增量更新配置文件中的路由
@@ -118,6 +139,7 @@ class SyncService:
             if is_new_route:
                 # 新路由：直接插入
                 logger.info(f"新增路由: {route.name} (ID: {route.id})")
+                # 处理正例向量
                 embeddings = encoder.encode(route.utterances)
                 qdrant_client.upsert_route_utterances(
                     route_id=route.id,
@@ -126,8 +148,21 @@ class SyncService:
                     embeddings=embeddings,
                     score_threshold=route.score_threshold
                 )
-                
                 total_points += len(route.utterances)
+                
+                # 处理负例向量
+                negative_samples = getattr(route, 'negative_samples', [])
+                if negative_samples:
+                    negative_embeddings = encoder.encode(negative_samples)
+                    negative_threshold = getattr(route, 'negative_threshold', 0.95)
+                    qdrant_client.upsert_route_negative_samples(
+                        route_id=route.id,
+                        route_name=route.name,
+                        negative_samples=negative_samples,
+                        embeddings=negative_embeddings,
+                        negative_threshold=negative_threshold,
+                    )
+                
                 new_count += 1
             else:
                 # 现有路由：检查是否需要更新
@@ -135,9 +170,11 @@ class SyncService:
                 # 先删除旧向量点，再插入新的（确保一致性）
                 # 这样可以处理utterances变化、名称变化、阈值变化等情况
                 logger.info(f"更新路由: {route.name} (ID: {route.id})")
-                # 先删除旧的向量点
+                # 先删除旧的向量点（包括正例和负例）
                 qdrant_client.delete_route(route.id)
-                # 重新编码并插入新的向量点
+                qdrant_client.delete_route_negative_samples(route.id)
+                
+                # 重新编码并插入新的正例向量点
                 embeddings = encoder.encode(route.utterances)
                 qdrant_client.upsert_route_utterances(
                     route_id=route.id,
@@ -146,8 +183,21 @@ class SyncService:
                     embeddings=embeddings,
                     score_threshold=route.score_threshold
                 )
-
                 total_points += len(route.utterances)
+                
+                # 处理负例向量
+                negative_samples = getattr(route, 'negative_samples', [])
+                if negative_samples:
+                    negative_embeddings = encoder.encode(negative_samples)
+                    negative_threshold = getattr(route, 'negative_threshold', 0.95)
+                    qdrant_client.upsert_route_negative_samples(
+                        route_id=route.id,
+                        route_name=route.name,
+                        negative_samples=negative_samples,
+                        embeddings=negative_embeddings,
+                        negative_threshold=negative_threshold,
+                    )
+
                 updated_count += 1
         
         # 处理被删除的路由缓存清理

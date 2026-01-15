@@ -21,8 +21,18 @@ class RouteConfig(BaseModel):
     name: str = Field(..., description="路由名称")
     description: str = Field(default="", description="路由描述")
     utterances: List[str] = Field(..., description="示例语句列表")
+    negative_samples: List[str] = Field(
+        default_factory=list,
+        description="负例语句列表，用于排除不应该匹配到该路由的查询",
+    )
     score_threshold: float = Field(
         default=0.75, description="相似度阈值", ge=0.0, le=1.0
+    )
+    negative_threshold: float = Field(
+        default=0.95,
+        description="负例相似度阈值，当查询与负例向量相似度超过此值时排除该路由",
+        ge=0.0,
+        le=1.0,
     )
 
 

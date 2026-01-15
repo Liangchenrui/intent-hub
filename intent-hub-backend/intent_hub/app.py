@@ -81,6 +81,20 @@ def generate_utterances():
     return routes.generate_utterances()
 
 
+@app.route("/routes/<int:route_id>/negative-samples", methods=["POST"])
+@require_auth
+def add_negative_samples(route_id: int):
+    """为路由添加负例样本"""
+    return routes.add_negative_samples(route_id)
+
+
+@app.route("/routes/<int:route_id>/negative-samples", methods=["DELETE"])
+@require_auth
+def delete_negative_samples(route_id: int):
+    """删除路由的所有负例样本"""
+    return routes.delete_negative_samples(route_id)
+
+
 @app.route("/reindex", methods=["POST"])
 @require_auth
 def reindex_route():

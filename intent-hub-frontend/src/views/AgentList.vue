@@ -111,6 +111,48 @@
               </div>
             </template>
           </el-table-column>
+          <el-table-column :label="$t('agent.negativeSamples')" min-width="300">
+            <template #default="{ row }">
+              <div class="utterances-container">
+                <el-tag 
+                  v-for="(text, index) in (row.negative_samples || []).slice(0, 5)" 
+                  :key="index" 
+                  class="utterance-tag negative-tag"
+                  size="small"
+                  effect="plain"
+                  round
+                  type="warning"
+                >
+                  {{ text }}
+                </el-tag>
+                <el-tooltip
+                  v-if="(row.negative_samples || []).length > 5"
+                  placement="top"
+                  effect="dark"
+                >
+                  <template #content>
+                    <div class="tooltip-utterances">
+                      <div v-for="(text, idx) in (row.negative_samples || [])" :key="idx" class="tooltip-item">
+                        {{ text }}
+                      </div>
+                    </div>
+                  </template>
+                  <el-tag 
+                    size="small" 
+                    type="warning" 
+                    effect="light" 
+                    round 
+                    class="more-tag"
+                  >
+                    +{{ (row.negative_samples || []).length - 5 }}
+                  </el-tag>
+                </el-tooltip>
+                <span v-if="!row.negative_samples || row.negative_samples.length === 0" class="empty-text">
+                  无
+                </span>
+              </div>
+            </template>
+          </el-table-column>
           <el-table-column :label="$t('agent.actions')" width="150" align="center" fixed="right">
             <template #default="{ row }">
               <el-button link type="primary" @click="handleEdit(row)">{{ $t('common.edit') }}</el-button>
@@ -192,6 +234,33 @@
             type="textarea" 
             :placeholder="$t('agent.utterancePlaceholder')" 
             :rows="10" 
+          />
+        </el-form-item>
+        <el-form-item :label="$t('agent.negativeThresholdLabel')">
+          <div class="threshold-container">
+            <el-slider 
+              v-model="editForm.negative_threshold" 
+              :min="0.8" 
+              :max="1" 
+              :step="0.01"
+              style="flex: 1; margin-right: 20px"
+            />
+            <el-input-number 
+              v-model="editForm.negative_threshold" 
+              :precision="2" 
+              :step="0.05" 
+              :min="0.8" 
+              :max="1"
+              size="small"
+            />
+          </div>
+        </el-form-item>
+        <el-form-item :label="$t('agent.negativeSamplesLabel')">
+          <el-input 
+            v-model="negativeSamplesText" 
+            type="textarea" 
+            :placeholder="$t('agent.negativeSamplesPlaceholder')" 
+            :rows="6" 
           />
         </el-form-item>
       </el-form>
@@ -278,19 +347,32 @@ const editForm = ref<Partial<RouteConfig>>({
   name: '',
   description: '',
   score_threshold: 0.75,
-  utterances: []
+  negative_threshold: 0.95,
+  utterances: [],
+  negative_samples: []
 });
 const utterancesText = ref('');
+const negativeSamplesText = ref('');
 
 const openModal = (agent?: RouteConfig) => {
   if (agent) {
     isEdit.value = true;
     editForm.value = { ...agent };
     utterancesText.value = agent.utterances.join('\n');
+    negativeSamplesText.value = (agent.negative_samples || []).join('\n');
   } else {
     isEdit.value = false;
-    editForm.value = { id: 0, name: '', description: '', score_threshold: 0.75, utterances: [] };
+    editForm.value = { 
+      id: 0, 
+      name: '', 
+      description: '', 
+      score_threshold: 0.75, 
+      negative_threshold: 0.95,
+      utterances: [],
+      negative_samples: []
+    };
     utterancesText.value = '';
+    negativeSamplesText.value = '';
   }
   showModal.value = true;
 };
@@ -345,7 +427,9 @@ const handleSave = async () => {
   try {
     const data = {
       ...editForm.value,
-      utterances: utterancesText.value.split('\n').filter(s => s.trim())
+      utterances: utterancesText.value.split('\n').filter(s => s.trim()),
+      negative_samples: negativeSamplesText.value.split('\n').filter(s => s.trim()),
+      negative_threshold: editForm.value.negative_threshold || 0.95
     } as RouteConfig;
     isEdit.value ? await updateRoute(data.id, data) : await createRoute(data);
     // 新增或修改路由后都需要重置全量同步标记
@@ -507,6 +591,16 @@ const handleDelete = async (id: number) => {
 
 .tooltip-item:last-child {
   border-bottom: none;
+}
+
+.negative-tag {
+  border-color: #e6a23c;
+}
+
+.empty-text {
+  color: #909399;
+  font-size: 12px;
+  font-style: italic;
 }
 
 .threshold-container {

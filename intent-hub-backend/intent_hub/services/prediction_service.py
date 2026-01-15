@@ -40,7 +40,30 @@ class PredictionService:
         query_vector = encoder.encode_single(request.text)
         logger.debug(f"查询文本: {request.text}, 向量维度: {len(query_vector)}")
 
-        # 2. 相似度检索 (获取较多的候选结果以便过滤)
+        # 2. 负例检查：先检查查询是否与任何负例向量过于接近
+        excluded_route_ids = set()
+        negative_search_results = qdrant_client.search_negative_samples(
+            query_vector, top_k=20
+        )
+
+        for neg_result in negative_search_results:
+            score = neg_result["score"]
+            payload = neg_result["payload"]
+            route_id = payload[qdrant_client.ROUTE_ID_KEY]
+            negative_threshold = payload.get(
+                qdrant_client.NEGATIVE_THRESHOLD_KEY, 0.95  # 默认负例阈值
+            )
+
+            # 如果查询与负例向量相似度超过阈值，排除该路由
+            if score >= negative_threshold:
+                excluded_route_ids.add(route_id)
+                logger.info(
+                    f"负例排除: route_id={route_id}, "
+                    f"negative_score={score:.4f} >= negative_threshold={negative_threshold}, "
+                    f"negative_sample={payload.get(qdrant_client.UTTERANCE_KEY)}"
+                )
+
+        # 3. 相似度检索 (获取较多的候选结果以便过滤)
         top_k = 20
         search_results = qdrant_client.search(query_vector, top_k=top_k)
         logger.debug(f"搜索原始结果数量: {len(search_results)}")
@@ -58,7 +81,7 @@ class PredictionService:
                 )
             ]
 
-        # 3. 按路由ID分组并进行阈值过滤
+        # 4. 按路由ID分组并进行阈值过滤（同时排除负例匹配的路由）
         # 因为 Qdrant 返回的是 utterance 级别的匹配，一个路由可能有多个匹配项，取最高分
         matched_routes: Dict[int, PredictResponse] = {}
 
@@ -67,6 +90,13 @@ class PredictionService:
             payload = result["payload"]
             route_id = payload[qdrant_client.ROUTE_ID_KEY]
             route_name = payload[qdrant_client.ROUTE_NAME_KEY]
+
+            # 跳过被负例排除的路由
+            if route_id in excluded_route_ids:
+                logger.debug(
+                    f"跳过负例排除的路由: route_id={route_id}, score={score:.4f}"
+                )
+                continue
 
             # 获取该路由的阈值
             threshold = route_manager.get_score_threshold(route_id)
@@ -91,7 +121,7 @@ class PredictionService:
                     f"未达阈值: route_id={route_id}, score={score:.4f} < threshold={threshold}"
                 )
 
-        # 4. 排序并转换结果
+        # 5. 排序并转换结果
         sorted_results = sorted(
             matched_routes.values(),
             key=lambda x: x.score if x.score is not None else 0,

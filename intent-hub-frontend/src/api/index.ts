@@ -57,7 +57,9 @@ export interface RouteConfig {
   name: string;
   description: string;
   utterances: string[];
+  negative_samples?: string[];
   score_threshold: number;
+  negative_threshold?: number;
 }
 
 export interface GenerateUtterancesRequest {
@@ -187,6 +189,23 @@ export interface Settings {
 
 export const getSettings = () => api.get<Settings>('/settings');
 export const updateSettings = (data: Partial<Settings>) => api.post<{ message: string; settings: Settings }>('/settings', data);
+
+// 负例管理接口
+export interface AddNegativeSamplesRequest {
+  negative_samples: string[];
+  negative_threshold?: number;
+}
+
+export const addNegativeSamples = (routeId: number, data: AddNegativeSamplesRequest) =>
+  api.post<{ message: string; route_id: number; total_negative_samples: number }>(
+    `/routes/${routeId}/negative-samples`,
+    data
+  );
+
+export const deleteNegativeSamples = (routeId: number) =>
+  api.delete<{ message: string; route_id: number }>(
+    `/routes/${routeId}/negative-samples`
+  );
 
 export default api;
 

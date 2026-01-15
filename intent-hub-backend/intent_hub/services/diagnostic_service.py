@@ -81,7 +81,19 @@ class DiagnosticService:
                 route_id=route_id, route_name=current_route.name, overlaps=[]
             )
 
-        current_vectors = [np.array(p["vector"]) for p in current_points]
+        # 排除负例语料：如果一个语料在 negative_samples 中，即使它在 utterances 中，也要排除
+        current_negative_samples = set(getattr(current_route, 'negative_samples', []) or [])
+        current_points_filtered = [
+            p for p in current_points 
+            if p["payload"].get("utterance", "") not in current_negative_samples
+        ]
+
+        if not current_points_filtered:
+            return DiagnosticResult(
+                route_id=route_id, route_name=current_route.name, overlaps=[]
+            )
+
+        current_vectors = [np.array(p["vector"]) for p in current_points_filtered]
         centroid_current = np.mean(current_vectors, axis=0)
 
         # 3. 获取所有其他路由
@@ -97,7 +109,17 @@ class DiagnosticService:
             if not other_points:
                 continue
 
-            other_vectors = [np.array(p["vector"]) for p in other_points]
+            # 排除对方路由的负例语料
+            other_negative_samples = set(getattr(other_route, 'negative_samples', []) or [])
+            other_points_filtered = [
+                p for p in other_points 
+                if p["payload"].get("utterance", "") not in other_negative_samples
+            ]
+
+            if not other_points_filtered:
+                continue
+
+            other_vectors = [np.array(p["vector"]) for p in other_points_filtered]
             centroid_other = np.mean(other_vectors, axis=0)
 
             # A. 区域重叠：计算两个质心之间的相似度 (Region Overlap)
@@ -105,7 +127,7 @@ class DiagnosticService:
 
             # B. 向量冲突：计算点对点相似度 (Instance Conflict)
             instance_conflicts = []
-            for p_curr in current_points:
+            for p_curr in current_points_filtered:
                 v_curr = np.array(p_curr["vector"])
                 u_curr = p_curr["payload"].get("utterance", "")
 
@@ -182,11 +204,23 @@ class DiagnosticService:
         # 2. 更新其他路由中关于当前路由的重叠信息
         self.component_manager.ensure_ready()
         qdrant_client = self.component_manager.qdrant_client
+        route_manager = self.component_manager.route_manager
 
         current_points = qdrant_client.get_route_vectors(route_id)
         if current_points:
-            current_vectors = [np.array(p["vector"]) for p in current_points]
-            centroid_current = np.mean(current_vectors, axis=0)
+            # 排除负例语料
+            current_route = route_manager.get_route(route_id)
+            current_negative_samples = set(getattr(current_route, 'negative_samples', []) or []) if current_route else set()
+            current_points_filtered = [
+                p for p in current_points 
+                if p["payload"].get("utterance", "") not in current_negative_samples
+            ]
+            
+            if current_points_filtered:
+                current_vectors = [np.array(p["vector"]) for p in current_points_filtered]
+                centroid_current = np.mean(current_vectors, axis=0)
+            else:
+                centroid_current = None
 
             for other_id_str, other_data in cache.items():
                 other_id = int(other_id_str)
@@ -198,7 +232,18 @@ class DiagnosticService:
                 if not other_points:
                     continue
 
-                other_vectors = [np.array(p["vector"]) for p in other_points]
+                # 排除对方路由的负例语料
+                other_route = route_manager.get_route(other_id)
+                other_negative_samples = set(getattr(other_route, 'negative_samples', []) or []) if other_route else set()
+                other_points_filtered = [
+                    p for p in other_points 
+                    if p["payload"].get("utterance", "") not in other_negative_samples
+                ]
+
+                if not other_points_filtered or centroid_current is None:
+                    continue
+
+                other_vectors = [np.array(p["vector"]) for p in other_points_filtered]
                 centroid_other = np.mean(other_vectors, axis=0)
 
                 # A. 区域重叠
@@ -206,10 +251,10 @@ class DiagnosticService:
 
                 # B. 向量冲突 (注意这里是 other 作为 source, current 作为 target)
                 instance_conflicts = []
-                for p_other in other_points:
+                for p_other in other_points_filtered:
                     v_other = np.array(p_other["vector"])
                     u_other = p_other["payload"].get("utterance", "")
-                    for p_curr in current_points:
+                    for p_curr in current_points_filtered:
                         v_curr = np.array(p_curr["vector"])
                         u_curr = p_curr["payload"].get("utterance", "")
                         sim = self._cosine_similarity(v_other, v_curr)
@@ -298,7 +343,8 @@ class DiagnosticService:
         if umap is None:
             raise RuntimeError("未安装 umap-learn，无法进行 UMAP 降维")
 
-        all_points = qdrant_client.scroll_all_points(with_vectors=True)
+        # 排除负例向量，只获取正例向量用于诊断和可视化
+        all_points = qdrant_client.scroll_all_points(with_vectors=True, exclude_negative=True)
         if not all_points:
             return {
                 "points": [],
@@ -317,6 +363,9 @@ class DiagnosticService:
             if v is None:
                 continue
             if pl.get("route_id") is None:
+                continue
+            # 双重检查：确保不是负例向量
+            if pl.get(qdrant_client.IS_NEGATIVE_KEY, False):
                 continue
             vectors.append(np.array(v, dtype=np.float32))
             payloads.append(pl)
