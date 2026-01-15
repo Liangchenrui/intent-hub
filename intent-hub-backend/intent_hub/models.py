@@ -86,8 +86,9 @@ class GenerateUtterancesRequest(BaseModel):
 class ConflictPoint(BaseModel):
     """冲突点信息"""
 
-    utterance: str = Field(..., description="冲突的语句")
-    similarity: float = Field(..., description="与对方质心的相似度")
+    source_utterance: str = Field(..., description="源路由冲突语句")
+    target_utterance: str = Field(..., description="目标路由冲突语句")
+    similarity: float = Field(..., description="向量余弦相似度")
 
 
 class RouteOverlap(BaseModel):
@@ -95,10 +96,9 @@ class RouteOverlap(BaseModel):
 
     target_route_id: int = Field(..., description="目标路由ID")
     target_route_name: str = Field(..., description="目标路由名称")
-    overlap_score: float = Field(..., description="重叠分数（0-1）")
-    hausdorff_distance: Optional[float] = Field(None, description="Hausdorff 距离")
-    conflicting_utterances: List[ConflictPoint] = Field(
-        default_factory=list, description="具体的冲突语句"
+    region_similarity: float = Field(..., description="区域（质心）相似度")
+    instance_conflicts: List[ConflictPoint] = Field(
+        default_factory=list, description="具体的向量冲突对"
     )
 
 
@@ -117,6 +117,9 @@ class RepairSuggestion(BaseModel):
     route_name: str = Field(..., description="路由名称")
     new_utterances: List[str] = Field(..., description="建议新增的强化语句")
     negative_samples: List[str] = Field(..., description="建议新增的负面约束语句")
+    conflicting_utterances: List[str] = Field(
+        default_factory=list, description="建议删除的冲突语句"
+    )
     rationalization: str = Field(..., description="修改理由")
 
 

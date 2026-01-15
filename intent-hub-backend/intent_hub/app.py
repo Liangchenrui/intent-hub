@@ -141,6 +141,18 @@ def init_app():
     """初始化应用（包括组件初始化）"""
     component_manager = get_component_manager()
     component_manager.init_components()
+
+    # 启动全量诊断（异步），避免阻塞启动过程
+    try:
+        from intent_hub.services.diagnostic_service import DiagnosticService
+        from intent_hub.utils.logger import logger
+        diagnostic_service = DiagnosticService(component_manager)
+        diagnostic_service.run_async_diagnostics("full")
+        logger.info("系统启动：已异步启动后台全量重叠诊断")
+    except Exception as e:
+        from intent_hub.utils.logger import logger
+        logger.error(f"系统启动时启动全量诊断失败: {e}")
+
     return app
 
 
@@ -148,6 +160,17 @@ if __name__ == "__main__":
     # 初始化组件
     component_manager = get_component_manager()
     component_manager.init_components()
+
+    # 启动全量诊断（异步）
+    try:
+        from intent_hub.services.diagnostic_service import DiagnosticService
+        from intent_hub.utils.logger import logger
+        diagnostic_service = DiagnosticService(component_manager)
+        diagnostic_service.run_async_diagnostics("full")
+        logger.info("系统手动启动：已异步启动后台全量重叠诊断")
+    except Exception as e:
+        from intent_hub.utils.logger import logger
+        logger.error(f"系统手动启动时启动全量诊断失败: {e}")
 
     # 启动Flask应用
     app.run(host=Config.FLASK_HOST, port=Config.FLASK_PORT, debug=Config.FLASK_DEBUG)

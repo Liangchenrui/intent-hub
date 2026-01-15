@@ -7,24 +7,26 @@ from intent_hub.models import RepairRequest, ApplyRepairRequest
 @handle_errors
 def analyze_overlap(route_id):
     """分析指定路由与其他路由的重叠情况"""
-    threshold = request.args.get("threshold", 0.85, type=float)
-    
     component_manager = get_component_manager()
     diagnostic_service = DiagnosticService(component_manager)
     
-    result = diagnostic_service.analyze_route_overlap(route_id, threshold)
+    result = diagnostic_service.analyze_route_overlap(route_id)
     return jsonify(result.dict()), 200
 
 @handle_errors
 def analyze_all_overlaps():
     """全局分析所有路由的重叠情况"""
-    threshold = request.args.get("threshold", 0.85, type=float)
     refresh = request.args.get("refresh", "false").lower() == "true"
     
     component_manager = get_component_manager()
     diagnostic_service = DiagnosticService(component_manager)
     
-    results = diagnostic_service.analyze_all_overlaps(threshold, use_cache=not refresh)
+    if refresh:
+        # 手动点击深度体检：现在改为同步执行，直接返回最新结果
+        results = diagnostic_service.analyze_all_overlaps(use_cache=False)
+        return jsonify([r.dict() for r in results]), 200
+
+    results = diagnostic_service.analyze_all_overlaps(use_cache=True)
     return jsonify([r.dict() for r in results]), 200
 
 

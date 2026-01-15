@@ -100,25 +100,26 @@ class Config:
 {format_instructions}"""
 
     AGENT_REPAIR_PROMPT: str = """你是一个 NLU 专家。
-当前存在两个意图在语义上发生了重叠，导致模型难以区分。
-你的任务是为 意图 A 提供修复建议，以增强其特征并避开 意图 B 的语义。
+    当前存在两个意图在语义上发生了重叠，导致模型难以区分。
+    你的任务是分析意图“{name_a}”，找出其中容易与意图“{name_b}”混淆的语句并建议删除或修改，同时提供一些更具区分性的新语句。
 
-意图 A: {name_a}
-描述 A: {desc_a}
-现有例句 A: {utterances_a}
+    意图 1 (目标分析对象): {name_a}
+    描述 1: {desc_a}
+    现有例句 1: {utterances_a}
 
-意图 B: {name_b}
-描述 B: {desc_b}
+    意图 2 (冲突对照对象): {name_b}
+    描述 2: {desc_b}
 
-高频冲突例句: {conflicts}
+    具体的冲突对（显示“{name_a}”中的句子与“{name_b}”中的哪些句子过于接近）: {conflicts}
 
-请按以下 JSON 格式回复：
-{{
-  "new_utterances": ["生成 5 个新例句，强化 A 的特征词，避开 B 的语义"],
-  "negative_samples": ["生成 3 个负面约束例句，即：如果用户这么说，虽然语义接近 A，但绝对不属于 A"],
-  "rationalization": "给出修改理由"
-}}
-不要输出任何其他文本。"""
+    请按以下 JSON 格式回复：
+    {{
+      "conflicting_utterances": ["从 '现有例句 1' 中选出最应该被删除或修改的句子"],
+      "new_utterances": ["生成 3-5 个新例句，这些句子应具有更强的 {name_a} 的特征词，且明显区别于 {name_b}"],
+      "negative_samples": ["生成 2-3 个负面约束例句，即：如果用户这么说，虽然语义接近 {name_a}，但实际不属于 {name_a}"],
+      "rationalization": "给出修改理由。注意：在理由中请直接使用意图的具体名称（即“{name_a}”和“{name_b}”），绝对禁止使用“意图A”、“意图B”、“Agent A”或“Agent B”这类代称。"
+    }}
+    不要输出任何其他文本。"""
 
     @classmethod
     def get_settings_path(cls) -> Path:

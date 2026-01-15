@@ -67,14 +67,14 @@ class SyncService:
             )
             total_points += len(route.utterances)
         
-        # 全量同步后强制刷新诊断缓存
+        # 全量同步后同步启动全量诊断，确保数据一致性
         try:
             from intent_hub.services.diagnostic_service import DiagnosticService
             diag_service = DiagnosticService(self.component_manager)
             diag_service.analyze_all_overlaps(use_cache=False)
-            logger.info("全量同步后已完成诊断缓存刷新")
+            logger.info("全量同步后已同步完成全量诊断")
         except Exception as e:
-            logger.error(f"全量同步后刷新诊断缓存失败: {e}")
+            logger.error(f"全量同步后启动全量诊断失败: {e}")
 
         return {
             "message": "全量重新索引完成",
@@ -127,14 +127,6 @@ class SyncService:
                     score_threshold=route.score_threshold
                 )
                 
-                # 触发增量诊断更新
-                try:
-                    from intent_hub.services.diagnostic_service import DiagnosticService
-                    diag_service = DiagnosticService(self.component_manager)
-                    diag_service.update_route_diagnostics(route.id)
-                except Exception as e:
-                    logger.error(f"增量更新路由 ID {route.id} 的诊断信息失败: {e}")
-
                 total_points += len(route.utterances)
                 new_count += 1
             else:
@@ -155,14 +147,6 @@ class SyncService:
                     score_threshold=route.score_threshold
                 )
 
-                # 触发增量诊断更新
-                try:
-                    from intent_hub.services.diagnostic_service import DiagnosticService
-                    diag_service = DiagnosticService(self.component_manager)
-                    diag_service.update_route_diagnostics(route.id)
-                except Exception as e:
-                    logger.error(f"增量更新路由 ID {route.id} 的诊断信息失败: {e}")
-
                 total_points += len(route.utterances)
                 updated_count += 1
         
@@ -175,6 +159,16 @@ class SyncService:
                     diag_service.remove_route_from_cache(rid)
             except Exception as e:
                 logger.error(f"清理已删除路由的诊断缓存失败: {e}")
+
+        # 增量同步后，如果有任何变化，同步启动全量诊断确保最新
+        if new_count > 0 or updated_count > 0 or deleted_count > 0:
+            try:
+                from intent_hub.services.diagnostic_service import DiagnosticService
+                diag_service = DiagnosticService(self.component_manager)
+                diag_service.analyze_all_overlaps(use_cache=False)
+                logger.info("增量同步后已同步完成全量诊断")
+            except Exception as e:
+                logger.error(f"增量同步后同步启动全量诊断失败: {e}")
 
         return {
             "message": "增量重新索引完成",

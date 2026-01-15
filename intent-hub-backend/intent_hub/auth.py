@@ -14,8 +14,8 @@ from intent_hub.models import ErrorResponse
 class AuthManager:
     """API Key认证管理器（内存存储，支持TTL和用户key管理）"""
 
-    # TTL设置为10分钟（秒）
-    KEY_TTL: int = 10 * 60
+    # TTL设置为30分钟（秒）
+    KEY_TTL: int = 30 * 60
 
     def __init__(self):
         """初始化认证管理器"""

@@ -110,14 +110,14 @@ class RouteService:
 
         logger.info(f"成功处理路由: {route.name} (ID: {route.id})")
 
-        # 触发增量诊断更新
+        # 同步触发增量诊断更新，确保数据一致性
         try:
             from intent_hub.services.diagnostic_service import DiagnosticService
             diagnostic_service = DiagnosticService(self.component_manager)
             diagnostic_service.update_route_diagnostics(route.id)
-            logger.info(f"已完成路由 ID {route.id} 的增量诊断更新")
+            logger.info(f"已同步完成路由 ID {route.id} 的增量诊断更新")
         except Exception as e:
-            logger.error(f"增量诊断更新失败: {e}")
+            logger.error(f"同步增量诊断失败: {e}")
 
         return route
 
@@ -173,15 +173,15 @@ class RouteService:
                 score_threshold=route.score_threshold,
             )
 
-            # 触发增量诊断更新
+            # 同步触发增量诊断更新
             try:
                 from intent_hub.services.diagnostic_service import DiagnosticService
 
                 diagnostic_service = DiagnosticService(self.component_manager)
                 diagnostic_service.update_route_diagnostics(route_id)
-                logger.info(f"已完成路由 ID {route_id} 的增量诊断更新")
+                logger.info(f"已同步完成路由 ID {route_id} 的增量诊断更新")
             except Exception as e:
-                logger.error(f"增量诊断更新失败: {e}")
+                logger.error(f"同步增量诊断失败: {e}")
         else:
             logger.info(f"路由 ID {route_id} 关键配置未变化，跳过向量和诊断更新")
 

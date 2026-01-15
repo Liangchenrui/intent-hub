@@ -82,16 +82,16 @@ export const deleteRoute = (id: number) => api.delete<{ message: string }>(`/rou
 export const generateUtterances = (data: GenerateUtterancesRequest) => api.post<RouteConfig>('/routes/generate-utterances', data);
 
 export interface ConflictPoint {
-  utterance: string;
+  source_utterance: string;
+  target_utterance: string;
   similarity: number;
 }
 
 export interface RouteOverlap {
   target_route_id: number;
   target_route_name: string;
-  overlap_score: number;
-  hausdorff_distance?: number;
-  conflicting_utterances: ConflictPoint[];
+  region_similarity: number;
+  instance_conflicts: ConflictPoint[];
 }
 
 export interface DiagnosticResult {
@@ -105,12 +105,13 @@ export interface RepairSuggestion {
   route_name: string;
   new_utterances: string[];
   negative_samples: string[];
+  conflicting_utterances: string[];
   rationalization: string;
 }
 
-export const getOverlaps = (threshold: number = 0.85, refresh: boolean = false) => 
-  api.get<DiagnosticResult[]>('/diagnostics/overlap', { params: { threshold, refresh } });
-export const getRouteOverlap = (routeId: number, threshold: number = 0.85) => api.get<DiagnosticResult>(`/diagnostics/overlap/${routeId}`, { params: { threshold } });
+export const getOverlaps = (refresh: boolean = false) => 
+  api.get<DiagnosticResult[]>('/diagnostics/overlap', { params: { refresh } });
+export const getRouteOverlap = (routeId: number) => api.get<DiagnosticResult>(`/diagnostics/overlap/${routeId}`);
 export const getRepairSuggestions = (sourceRouteId: number, targetRouteId: number) => 
   api.post<RepairSuggestion>('/diagnostics/repair', { source_route_id: sourceRouteId, target_route_id: targetRouteId });
 export const applyRepair = (routeId: number, utterances: string[]) => 
