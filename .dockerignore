@@ -64,7 +64,7 @@ docker-compose*.yml
 # ===========================================
 # 模型文件 (重要: 确保镜像不包含模型)
 # ===========================================
-intent_hub/models/
+intent-hub-backend/intent_hub/models/
 *.safetensors
 *.bin
 *.pt
@@ -86,7 +86,14 @@ huggingface/
 .env.local
 .env.*.local
 *.env
-intent_hub/settings.json
+intent-hub-backend/intent_hub/settings.json
+
+# ===========================================
+# 前端构建产物
+# ===========================================
+intent-hub-frontend/dist/
+intent-hub-frontend/dist-ssr/
+intent-hub-frontend/node_modules/
 
 # ===========================================
 # 其他
