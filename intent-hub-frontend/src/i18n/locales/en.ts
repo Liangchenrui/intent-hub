@@ -26,7 +26,7 @@ export default {
     view: 'View',
     listView: 'List',
     mapView: 'Map',
-    loadMap: 'Load Map',
+    loadMap: 'Load',
     threshold: 'Overlap Threshold',
     noOverlap: 'No significant semantic conflicts detected',
     overlapDetected: 'Detected {count} potential conflicts',

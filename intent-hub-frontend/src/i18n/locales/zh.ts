@@ -26,7 +26,7 @@ export default {
     view: '视图',
     listView: '列表',
     mapView: '分布图',
-    loadMap: '加载分布图',
+    loadMap: '加载',
     threshold: '重叠阈值',
     noOverlap: '未检测到明显的语义冲突',
     overlapDetected: '检测到 {count} 组潜在冲突',

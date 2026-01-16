@@ -49,6 +49,20 @@
 
         <div v-if="viewMode === 'map'" class="map-panel">
           <div class="map-toolbar">
+            <div class="search-box">
+              <el-input
+                v-model="mapSearchQuery"
+                placeholder="搜索语料定位..."
+                class="search-input"
+                clearable
+                @input="handleMapSearch"
+                @clear="handleMapSearch"
+              >
+                <template #prefix>
+                  <el-icon><Search /></el-icon>
+                </template>
+              </el-input>
+            </div>
             <el-button :loading="mapLoading" @click="loadUmap" type="primary">
               {{ $t('diagnostics.loadMap') }}
             </el-button>
@@ -497,6 +511,8 @@ const umapMinDist = ref(0.1);
 const chartRef = ref<HTMLDivElement | null>(null);
 const umapPoints = ref<UmapPoint2D[]>([]);
 const chartInstance = ref<echarts.ECharts | null>(null);
+const mapSearchQuery = ref('');
+const currentSymbolSize = ref(10);
 
 // 颜色映射：为每个路由分配稳定颜色
 const colorByRoute = ref<Record<number, string>>({});
@@ -694,17 +710,15 @@ const updateRepairChart = () => {
       symbolSize: 14,
       itemStyle: { 
         color: getColorForRoute(sourceId),
-        opacity: 0.85,
-        shadowBlur: 12,
-        shadowColor: getColorForRoute(sourceId) + '66',
-        borderColor: '#fff',
-        borderWidth: 1.5
+        opacity: 0.7,
+        borderWidth: 0
       },
       emphasis: { 
+        focus: 'series' as const,
+        blurScope: 'coordinateSystem' as const,
         itemStyle: { 
-          borderColor: '#fff', 
-          borderWidth: 3, 
-          shadowBlur: 25,
+          borderWidth: 0, 
+          shadowBlur: 0,
           opacity: 1
         } 
       }
@@ -716,17 +730,15 @@ const updateRepairChart = () => {
       symbolSize: 14,
       itemStyle: { 
         color: getColorForRoute(targetId),
-        opacity: 0.85,
-        shadowBlur: 12,
-        shadowColor: getColorForRoute(targetId) + '66',
-        borderColor: '#fff',
-        borderWidth: 1.5
+        opacity: 0.7,
+        borderWidth: 0
       },
       emphasis: { 
+        focus: 'series' as const,
+        blurScope: 'coordinateSystem' as const,
         itemStyle: { 
-          borderColor: '#fff', 
-          borderWidth: 3, 
-          shadowBlur: 25,
+          borderWidth: 0, 
+          shadowBlur: 0,
           opacity: 1
         } 
       }
@@ -734,6 +746,8 @@ const updateRepairChart = () => {
   ];
 
   const option: echarts.EChartsOption = {
+    animationDuration: 1500,
+    animationEasing: 'cubicOut',
     tooltip: {
       trigger: 'item',
       backgroundColor: 'rgba(255, 255, 255, 0.98)',
@@ -1067,6 +1081,21 @@ const initChart = async () => {
     }
   });
 
+  // 监听缩放事件，实现动态点大小
+  chartInstance.value.on('dataZoom', () => {
+    const option = chartInstance.value?.getOption() as any;
+    if (option && option.dataZoom && option.dataZoom[0]) {
+      const zoomLevel = option.dataZoom[0].end - option.dataZoom[0].start; 
+      // 缩放越小（zoomLevel越小），点越大
+      const newSize = Math.max(6, Math.min(24, 25 - (zoomLevel / 100) * 18));
+      
+      if (Math.abs(newSize - currentSymbolSize.value) > 0.5) {
+        currentSymbolSize.value = newSize;
+        updateChart();
+      }
+    }
+  });
+
   // 监听窗口大小变化
   const resizeHandler = () => {
     chartInstance.value?.resize();
@@ -1112,34 +1141,56 @@ const updateChart = () => {
     return {
       name: routeNames.value[routeId] || `Route ${routeId}`,
       type: 'scatter' as const,
-      data: group.map(([x, y, point]) => ({
-        value: [x, y],
-        routeId: point.route_id,
-        routeName: point.route_name,
-        utterance: point.utterance,
-      })),
-      symbolSize: 10,
+      data: group.map(([x, y, point]) => {
+        const isMatch = mapSearchQuery.value && point.utterance.toLowerCase().includes(mapSearchQuery.value.toLowerCase());
+        return {
+          value: [x, y],
+          routeId: point.route_id,
+          routeName: point.route_name,
+          utterance: point.utterance,
+          symbolSize: isMatch ? currentSymbolSize.value * 2.8 : currentSymbolSize.value,
+          itemStyle: isMatch ? {
+            color: routeColor,
+            opacity: 1,
+            shadowBlur: 20,
+            shadowColor: routeColor,
+            borderColor: '#fff',
+            borderWidth: 2
+          } : undefined,
+          label: isMatch ? {
+            show: true,
+            formatter: '{b}',
+            position: 'top' as const,
+            color: '#333',
+            backgroundColor: 'rgba(255,255,255,0.9)',
+            padding: [4, 8],
+            borderRadius: 4,
+            fontSize: 12,
+            fontWeight: 'bold' as const
+          } : undefined
+        };
+      }),
+      symbolSize: currentSymbolSize.value,
       itemStyle: {
         color: routeColor,
-        opacity: 0.8,
-        shadowBlur: 8,
-        shadowColor: routeColor + '4d',
-        borderColor: '#fff',
-        borderWidth: 1,
+        opacity: 0.6,
+        borderWidth: 0,
       },
       emphasis: {
+        focus: 'series' as const,
+        blurScope: 'coordinateSystem' as const,
         itemStyle: {
           opacity: 1,
-          borderColor: '#fff',
-          borderWidth: 2.5,
-          shadowBlur: 20,
-          shadowColor: routeColor + '80',
+          borderWidth: 0,
+          shadowBlur: 0,
         },
       },
     };
   });
 
   const option: echarts.EChartsOption = {
+    animationDuration: 1500,
+    animationEasing: 'cubicOut',
     title: {
       text: t('diagnostics.mapTitle'),
       left: 20,
@@ -1236,6 +1287,35 @@ const updateChart = () => {
   chartInstance.value.setOption(option, true);
 };
 
+const handleMapSearch = () => {
+  if (!mapSearchQuery.value) {
+    updateChart();
+    return;
+  }
+
+  const query = mapSearchQuery.value.toLowerCase();
+  const matches = umapPoints.value.filter(p => p.utterance.toLowerCase().includes(query));
+  
+  if (matches.length > 0 && chartInstance.value) {
+    const avgX = matches.reduce((sum, p) => sum + p.x, 0) / matches.length;
+    const avgY = matches.reduce((sum, p) => sum + p.y, 0) / matches.length;
+
+    chartInstance.value.dispatchAction({
+      type: 'dataZoom',
+      startValue: avgX - 5,
+      endValue: avgX + 5,
+      xAxisIndex: 0
+    });
+    chartInstance.value.dispatchAction({
+      type: 'dataZoom',
+      startValue: avgY - 5,
+      endValue: avgY + 5,
+      yAxisIndex: 0
+    });
+  }
+  updateChart();
+};
+
 const loadUmap = async () => {
   mapLoading.value = true;
   try {
@@ -1265,11 +1345,17 @@ const loadUmap = async () => {
   }
 };
 
-// 监听视图模式切换，切换到 map 时初始化图表
+// 监听视图模式切换，切换到 map 时自动加载点云图
 watch(viewMode, async (newMode) => {
-  if (newMode === 'map' && umapPoints.value.length > 0) {
+  if (newMode === 'map') {
     await nextTick();
-    await initChart();
+    // 如果还没有加载过点云图，则自动加载
+    if (umapPoints.value.length === 0) {
+      await loadUmap();
+    } else {
+      // 如果已经加载过，只需初始化图表
+      await initChart();
+    }
   }
 });
 
@@ -1344,10 +1430,10 @@ const handleLogout = async () => {
 
 onMounted(() => {
   runDiagnostics();
-  // 如果初始视图是 map，延迟初始化图表（等待 DOM 渲染）
+  // 如果初始视图是 map，自动加载点云图
   if (viewMode.value === 'map') {
-    nextTick(() => {
-      initChart();
+    nextTick(async () => {
+      await loadUmap();
     });
   }
 });
@@ -1597,9 +1683,20 @@ onMounted(() => {
 
 .map-toolbar {
   display: flex;
-  justify-content: flex-start;
+  justify-content: space-between;
   align-items: center;
   gap: 12px;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 320px;
+}
+
+.search-input {
+  width: 100%;
 }
 
 .map-chart-wrap {
