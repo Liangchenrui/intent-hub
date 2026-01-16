@@ -24,7 +24,7 @@ langchain-openai>=0.0.5
 # 可选：本地模型支持（会显著增加镜像体积）
 # 如需启用，请取消下面注释
 # ===========================================
-# --extra-index-url https://download.pytorch.org/whl/cpu
-# torch
-# transformers>=4.30.0
-# sentencepiece>=0.1.99
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+transformers>=4.30.0
+sentencepiece>=0.1.99

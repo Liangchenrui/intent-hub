@@ -60,6 +60,8 @@ ENV/
 .env.local
 .env.*.local
 *.env
+!.env.china
+!.env.official
 
 # Frontend specific
 intent-hub-frontend/dist/

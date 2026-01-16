@@ -1,0 +1,57 @@
+services:
+  backend:
+    build:
+      context: ./intent-hub-backend
+      dockerfile: Dockerfile
+      args:
+        - BASE_IMAGE=${PYTHON_BASE}
+    container_name: intent-hub-backend
+    image: ${IMAGE_PREFIX}intent-hub-backend:latest
+    volumes:
+      - ./intent-hub-backend:/app
+      - model_cache:/root/.cache
+    environment:
+      - ENV=production
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+    ports:
+      - "8000:5000"
+    depends_on:
+      - qdrant
+    networks:
+      - intent-hub-net
+
+  frontend:
+    build:
+      context: ./intent-hub-frontend
+      dockerfile: Dockerfile
+      args:
+        - BASE_IMAGE=${NODE_BASE}
+        - NGINX_BASE=${NGINX_BASE}
+    container_name: intent-hub-frontend
+    image: ${IMAGE_PREFIX}intent-hub-frontend:latest
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - intent-hub-net
+
+  qdrant:
+    image: ${QDRANT_IMAGE}
+    container_name: intent-hub-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - intent-hub-net
+
+networks:
+  intent-hub-net:
+    driver: bridge
+
+volumes:
+  qdrant_data:
+  model_cache:

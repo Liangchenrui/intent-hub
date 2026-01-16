@@ -1,5 +1,6 @@
 """编码器模块 - 封装Qwen3-Embedding模型"""
 
+import threading
 from pathlib import Path
 from typing import List, Optional
 
@@ -88,12 +89,36 @@ class QwenEmbeddingEncoder:
 
             client = InferenceClient(**client_kwargs)
 
-            # 发送测试请求
-            result = client.feature_extraction(
-                "test",
-                model=self.model_name,
-            )
+            # 使用线程实现超时机制（10秒超时）
+            result_container = {"result": None, "exception": None}
 
+            def api_call():
+                """在独立线程中执行 API 调用"""
+                try:
+                    result_container["result"] = client.feature_extraction(
+                        "test",
+                        model=self.model_name,
+                    )
+                except Exception as e:
+                    result_container["exception"] = e
+
+            # 启动线程执行 API 调用
+            thread = threading.Thread(target=api_call, daemon=True)
+            thread.start()
+            thread.join(timeout=10)  # 10秒超时
+
+            # 检查是否超时
+            if thread.is_alive():
+                logger.warning(
+                    "HuggingFace Inference API 验证超时（10秒），将回退到本地模型"
+                )
+                return False
+
+            # 检查是否有异常
+            if result_container["exception"]:
+                raise result_container["exception"]
+
+            result = result_container["result"]
             if result is not None:
                 self._inference_client = client
                 logger.info("HuggingFace Inference API 验证成功，将使用远程服务")

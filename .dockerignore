@@ -86,6 +86,8 @@ huggingface/
 .env.local
 .env.*.local
 *.env
+!.env.china
+!.env.official
 intent-hub-backend/intent_hub/settings.json
 
 # ===========================================
