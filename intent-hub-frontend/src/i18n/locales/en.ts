@@ -46,6 +46,7 @@ export default {
     conflictComparison: 'Instance Conflict Comparison',
     actionOptions: 'Repair Actions',
     mergeRoutes: 'Merge Intents',
+    confirmMerge: 'Confirm Merge',
     deleteUtterance: 'Delete Utterance',
     modifyUtterance: 'Modify Utterance',
     moveUtterance: 'Move Utterance',

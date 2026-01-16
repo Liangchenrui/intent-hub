@@ -408,6 +408,15 @@
         <template #footer>
           <div class="dialog-footer">
             <el-button 
+              type="info" 
+              plain
+              @click="handleOpenMergeDialog" 
+              class="footer-btn merge-btn"
+            >
+              <el-icon><Switch /></el-icon>
+              {{ $t('diagnostics.mergeRoutes') }}
+            </el-button>
+            <el-button 
               type="primary" 
               plain
               @click="handleSyncAndRedetect" 
@@ -426,6 +435,98 @@
             >
               <el-icon><CircleCheckFilled /></el-icon>
               {{ $t('diagnostics.applyRepair') }}
+            </el-button>
+          </div>
+        </template>
+      </el-dialog>
+
+      <!-- 合并路由对话框 -->
+      <el-dialog
+        v-model="mergeDialogVisible"
+        :title="$t('diagnostics.mergeRoutes')"
+        width="800px"
+        append-to-body
+        class="merge-dialog"
+      >
+        <div v-if="currentSourceRoute && currentOverlap" class="merge-container">
+          <el-form label-position="top" label-width="120px">
+            <el-form-item :label="$t('agent.nameLabel')" required>
+              <el-input 
+                v-model="mergeForm.name" 
+                :placeholder="$t('agent.namePlaceholder')"
+                clearable
+              />
+            </el-form-item>
+            
+            <el-form-item :label="$t('agent.descLabel')">
+              <el-input 
+                v-model="mergeForm.description" 
+                type="textarea" 
+                :rows="3"
+                :placeholder="$t('agent.descPlaceholder')"
+                clearable
+              />
+            </el-form-item>
+            
+            <el-form-item :label="$t('agent.utteranceLabel')">
+              <div class="merge-utterances">
+                <div class="merge-source-info">
+                  <el-tag size="small" type="warning" effect="plain">
+                    {{ currentSourceRoute.route_name }}
+                  </el-tag>
+                  <span class="info-text">({{ sourceUtterances.length }} 条)</span>
+                </div>
+                <div class="merge-source-info" style="margin-top: 8px;">
+                  <el-tag size="small" type="danger" effect="plain">
+                    {{ currentOverlap.target_route_name }}
+                  </el-tag>
+                  <span class="info-text">({{ targetUtterances.length }} 条)</span>
+                </div>
+                <el-input 
+                  v-model="mergeForm.utterancesText" 
+                  type="textarea" 
+                  :rows="8"
+                  :placeholder="`从两个路由合并的语料，每行一条\n当前共 ${mergeForm.utterances.length} 条`"
+                  style="margin-top: 12px;"
+                />
+              </div>
+            </el-form-item>
+            
+            <el-form-item :label="$t('agent.negativeSamplesLabel')">
+              <div class="merge-utterances">
+                <div class="merge-source-info">
+                  <el-tag size="small" type="warning" effect="plain">
+                    {{ currentSourceRoute.route_name }}
+                  </el-tag>
+                  <span class="info-text">({{ sourceNegativeSamples.length }} 条)</span>
+                </div>
+                <div class="merge-source-info" style="margin-top: 8px;">
+                  <el-tag size="small" type="danger" effect="plain">
+                    {{ currentOverlap.target_route_name }}
+                  </el-tag>
+                  <span class="info-text">({{ targetNegativeSamples.length }} 条)</span>
+                </div>
+                <el-input 
+                  v-model="mergeForm.negativeSamplesText" 
+                  type="textarea" 
+                  :rows="6"
+                  :placeholder="`从两个路由合并的负例，每行一条\n当前共 ${mergeForm.negative_samples.length} 条`"
+                  style="margin-top: 12px;"
+                />
+              </div>
+            </el-form-item>
+          </el-form>
+        </div>
+        <template #footer>
+          <div class="merge-dialog-footer">
+            <el-button @click="mergeDialogVisible = false">{{ $t('common.cancel') }}</el-button>
+            <el-button 
+              type="primary" 
+              @click="handleMergeRoutes" 
+              :loading="mergingRoutes"
+              :disabled="!mergeForm.name.trim()"
+            >
+              {{ $t('diagnostics.confirmMerge') || '确认合并' }}
             </el-button>
           </div>
         </template>
@@ -487,6 +588,9 @@ import {
   getRepairSuggestions, 
   applyRepair,
   getRoutes,
+  deleteRoute,
+  createRoute,
+  reindex,
   getSettings,
   addNegativeSamples,
   type DiagnosticResult, 
@@ -535,6 +639,18 @@ const currentSourceRoute = ref<DiagnosticResult | null>(null);
 const currentOverlap = ref<RouteOverlap | null>(null);
 const selectedNewUtterances = ref<boolean[]>([]);
 const selectedConflictingUtterances = ref<boolean[]>([]);
+
+// 合并路由相关状态
+const mergeDialogVisible = ref(false);
+const mergingRoutes = ref(false);
+const mergeForm = ref({
+  name: '',
+  description: '',
+  utterances: [] as string[],
+  negative_samples: [] as string[],
+  utterancesText: '',
+  negativeSamplesText: ''
+});
 
 // 语料列表缓存
 const sourceUtterances = ref<string[]>([]);
@@ -1425,6 +1541,124 @@ const handleSyncAndRedetect = async () => {
   }
 };
 
+const handleOpenMergeDialog = async () => {
+  if (!currentSourceRoute.value || !currentOverlap.value) return;
+  
+  // 确保已加载语料数据
+  if (sourceUtterances.value.length === 0 || targetUtterances.value.length === 0) {
+    await fetchRouteUtterances();
+  }
+  
+  // 合并语料（去重）
+  const mergedUtterances = Array.from(new Set([
+    ...sourceUtterances.value,
+    ...targetUtterances.value
+  ]));
+  
+  // 合并负例（去重）
+  const mergedNegativeSamples = Array.from(new Set([
+    ...sourceNegativeSamples.value,
+    ...targetNegativeSamples.value
+  ]));
+  
+  // 设置表单默认值
+  mergeForm.value = {
+    name: `${currentSourceRoute.value.route_name} + ${currentOverlap.value.target_route_name}`,
+    description: `合并自 "${currentSourceRoute.value.route_name}" 和 "${currentOverlap.value.target_route_name}"`,
+    utterances: mergedUtterances,
+    negative_samples: mergedNegativeSamples,
+    utterancesText: mergedUtterances.join('\n'),
+    negativeSamplesText: mergedNegativeSamples.join('\n')
+  };
+  
+  mergeDialogVisible.value = true;
+};
+
+// 监听文本变化，同步到数组
+watch(() => mergeForm.value.utterancesText, (newVal) => {
+  mergeForm.value.utterances = newVal
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0);
+});
+
+watch(() => mergeForm.value.negativeSamplesText, (newVal) => {
+  mergeForm.value.negative_samples = newVal
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0);
+});
+
+const handleMergeRoutes = async () => {
+  if (!currentSourceRoute.value || !currentOverlap.value) return;
+  
+  if (!mergeForm.value.name.trim()) {
+    ElMessage.warning('请输入新路由名称');
+    return;
+  }
+  
+  try {
+    await ElMessageBox.confirm(
+      t('diagnostics.mergeConfirm', {
+        source: currentSourceRoute.value.route_name,
+        target: currentOverlap.value.target_route_name
+      }) || `确定要合并路由 "${currentSourceRoute.value.route_name}" 和 "${currentOverlap.value.target_route_name}" 吗？此操作不可撤销。`,
+      t('common.warning') || '警告',
+      { type: 'warning' }
+    );
+    
+    mergingRoutes.value = true;
+    fullPageLoading.value = true;
+    
+    // 1. 获取两个路由的完整信息（包括 score_threshold）
+    const allRoutesRes = await getRoutes();
+    const sourceRoute = allRoutesRes.data.find(r => r.id === currentSourceRoute.value?.route_id);
+    const targetRoute = allRoutesRes.data.find(r => r.id === currentOverlap.value?.target_route_id);
+    
+    if (!sourceRoute || !targetRoute) {
+      throw new Error('无法找到要合并的路由');
+    }
+    
+    // 2. 创建新路由（使用两个路由中较高的阈值）
+    const newRoute = {
+      id: 0, // 新建路由，id 由后端分配
+      name: mergeForm.value.name.trim(),
+      description: mergeForm.value.description.trim() || '',
+      utterances: mergeForm.value.utterances,
+      negative_samples: mergeForm.value.negative_samples,
+      score_threshold: Math.max(sourceRoute.score_threshold, targetRoute.score_threshold),
+      negative_threshold: sourceRoute.negative_threshold || targetRoute.negative_threshold
+    };
+    
+    const createRes = await createRoute(newRoute);
+    const newRouteId = createRes.data.id;
+    
+    // 3. 删除旧路由（先删除目标路由，再删除源路由）
+    await deleteRoute(currentOverlap.value.target_route_id);
+    await deleteRoute(currentSourceRoute.value.route_id);
+    
+    // 4. 重新索引
+    await reindex(true);
+    
+    // 5. 刷新诊断结果
+    await runDiagnostics(true);
+    
+    // 6. 关闭对话框
+    mergeDialogVisible.value = false;
+    repairDialogVisible.value = false;
+    
+    ElMessage.success(`路由合并成功！新路由 ID: ${newRouteId}`);
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('Failed to merge routes:', error);
+      ElMessage.error('合并路由失败：' + (error.message || '未知错误'));
+    }
+  } finally {
+    mergingRoutes.value = false;
+    fullPageLoading.value = false;
+  }
+};
+
 const handleLogout = async () => {
   try {
     await ElMessageBox.confirm(t('agent.logoutConfirm'), t('agent.logoutTitle'), { type: 'warning' });
@@ -2164,5 +2398,39 @@ onMounted(() => {
 .footer-right {
   display: flex;
   gap: 12px;
+}
+
+.merge-dialog :deep(.el-dialog__body) {
+  padding: 20px;
+}
+
+.merge-container {
+  padding: 0 10px;
+}
+
+.merge-utterances {
+  width: 100%;
+}
+
+.merge-source-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.info-text {
+  font-size: 12px;
+  color: #909399;
+}
+
+.merge-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.merge-btn {
+  min-width: 120px;
 }
 </style>

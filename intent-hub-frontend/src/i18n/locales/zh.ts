@@ -48,6 +48,7 @@ export default {
     conflictComparison: '语料冲突对比',
     actionOptions: '修复操作',
     mergeRoutes: '合并意图',
+    confirmMerge: '确认合并',
     deleteUtterance: '删除语料',
     modifyUtterance: '修改语料',
     moveUtterance: '移动语料',

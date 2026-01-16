@@ -6,43 +6,12 @@
   },
   "2": {
     "route_id": 2,
-    "route_name": "支付支持",
-    "overlaps": [
-      {
-        "target_route_id": 4,
-        "target_route_name": "支付助手",
-        "region_similarity": 0.9348890844497486,
-        "instance_conflicts": [
-          {
-            "source_utterance": "付款失败怎么办",
-            "target_utterance": "支付失败",
-            "similarity": 0.9371993616374958
-          }
-        ]
-      }
-    ]
-  },
-  "3": {
-    "route_id": 3,
     "route_name": "售后服务",
     "overlaps": []
   },
-  "4": {
-    "route_id": 4,
-    "route_name": "支付助手",
-    "overlaps": [
-      {
-        "target_route_id": 2,
-        "target_route_name": "支付支持",
-        "region_similarity": 0.9348890844497486,
-        "instance_conflicts": [
-          {
-            "source_utterance": "支付失败",
-            "target_utterance": "付款失败怎么办",
-            "similarity": 0.9371993616374958
-          }
-        ]
-      }
-    ]
+  "3": {
+    "route_id": 3,
+    "route_name": "支付支持",
+    "overlaps": []
   }
 }
