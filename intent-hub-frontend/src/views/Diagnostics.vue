@@ -30,7 +30,6 @@
           </div>
           <div class="action-section">
             <div class="view-mode-tabs">
-              <span class="view-label">{{ $t('diagnostics.conflictType') }}:</span>
               <el-tabs v-model="viewMode" class="mode-tabs">
                 <el-tab-pane :label="$t('diagnostics.listView')" name="list"></el-tab-pane>
                 <el-tab-pane :label="$t('diagnostics.mapView')" name="map"></el-tab-pane>
