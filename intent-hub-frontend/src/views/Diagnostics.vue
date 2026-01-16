@@ -196,7 +196,6 @@
                   <div 
                     class="route-pool source-pool" 
                     :class="{ 'drop-active': dragOverId === currentSourceRoute?.route_id }"
-                    :style="{ borderColor: getColorForRoute(currentSourceRoute?.route_id!) }"
                     @dragover.prevent="handleDragOver(currentSourceRoute?.route_id!)"
                     @dragleave="handleDragLeave"
                     @drop="handleDrop(currentSourceRoute?.route_id!)"
@@ -267,7 +266,6 @@
                   <div 
                     class="route-pool target-pool" 
                     :class="{ 'drop-active': dragOverId === currentOverlap?.target_route_id }"
-                    :style="{ borderColor: getColorForRoute(currentOverlap?.target_route_id!) }"
                     @dragover.prevent="handleDragOver(currentOverlap?.target_route_id!)"
                     @dragleave="handleDragLeave"
                     @drop="handleDrop(currentOverlap?.target_route_id!)"
