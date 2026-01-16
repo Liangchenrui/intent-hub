@@ -27,8 +27,6 @@ export default {
     listView: '列表',
     mapView: '分布图',
     loadMap: '加载分布图',
-    nNeighbors: '邻居数',
-    minDist: '最小距离',
     threshold: '重叠阈值',
     noOverlap: '未检测到明显的语义冲突',
     overlapDetected: '检测到 {count} 组潜在冲突',
@@ -81,8 +79,6 @@ export default {
     negativeAdded: '已添加为负例，并从正向例子中移除',
     negativeRemoved: '已从负例中移除',
     negativeUpdateError: '更新负例失败',
-    clickToEdit: '点击可编辑/删除',
-    suggestedNewUtterancesFor: '建议为"{name}"添加以下强化语句',
   },
   login: {
     title: 'Intent Hub 登录',

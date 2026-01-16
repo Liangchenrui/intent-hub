@@ -7,11 +7,37 @@
   "2": {
     "route_id": 2,
     "route_name": "支付支持",
-    "overlaps": []
+    "overlaps": [
+      {
+        "target_route_id": 3,
+        "target_route_name": "售后服务",
+        "region_similarity": 0.8595502674233704,
+        "instance_conflicts": [
+          {
+            "source_utterance": "怎么支付",
+            "target_utterance": "怎么支付",
+            "similarity": 1.0
+          }
+        ]
+      }
+    ]
   },
   "3": {
     "route_id": 3,
     "route_name": "售后服务",
-    "overlaps": []
+    "overlaps": [
+      {
+        "target_route_id": 2,
+        "target_route_name": "支付支持",
+        "region_similarity": 0.8595502674233704,
+        "instance_conflicts": [
+          {
+            "source_utterance": "怎么支付",
+            "target_utterance": "怎么支付",
+            "similarity": 1.0
+          }
+        ]
+      }
+    ]
   }
 }

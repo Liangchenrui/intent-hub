@@ -49,13 +49,7 @@
 
         <div v-if="viewMode === 'map'" class="map-panel">
           <div class="map-toolbar">
-            <div class="map-controls">
-              <span class="control-label">{{ $t('diagnostics.nNeighbors') }}</span>
-              <el-input-number v-model="umapNeighbors" :min="2" :max="100" :step="1" size="small" />
-              <span class="control-label">{{ $t('diagnostics.minDist') }}</span>
-              <el-input-number v-model="umapMinDist" :min="0" :max="1" :step="0.05" :precision="2" size="small" />
-            </div>
-            <el-button :loading="mapLoading" @click="loadUmap" type="primary" plain>
+            <el-button :loading="mapLoading" @click="loadUmap" type="primary">
               {{ $t('diagnostics.loadMap') }}
             </el-button>
           </div>
@@ -1603,21 +1597,9 @@ onMounted(() => {
 
 .map-toolbar {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   gap: 12px;
-}
-
-.map-controls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.control-label {
-  font-size: 12px;
-  color: #606266;
 }
 
 .map-chart-wrap {
