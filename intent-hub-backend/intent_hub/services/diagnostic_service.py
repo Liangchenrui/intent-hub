@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
+from intent_hub.config import Config
 from intent_hub.core.components import ComponentManager
 from intent_hub.models import (
     ConflictPoint,
@@ -25,11 +26,20 @@ class DiagnosticService:
 
     CACHE_FILE = "diagnostics_cache.json"
 
-    # 诊断阈值定义
-    REGION_THRESHOLD_SIGNIFICANT = 0.85  # 区域重叠：显著
-    REGION_THRESHOLD_SEVERE = 0.95  # 区域重叠：严重
-    INSTANCE_THRESHOLD_AMBIGUOUS = 0.92  # 向量冲突：模糊歧义
-    INSTANCE_THRESHOLD_HARD = 0.98  # 向量冲突：硬冲突
+    # 诊断阈值定义（从 Config 读取，提供默认值）
+    @property
+    def REGION_THRESHOLD_SIGNIFICANT(self) -> float:
+        """区域重叠：显著（路由级冲突阈值）"""
+        return getattr(Config, 'REGION_THRESHOLD_SIGNIFICANT', 0.85)
+    
+    REGION_THRESHOLD_SEVERE = 0.95  # 区域重叠：严重（保留用于未来扩展）
+    
+    @property
+    def INSTANCE_THRESHOLD_AMBIGUOUS(self) -> float:
+        """向量冲突：模糊歧义（语料级冲突阈值）"""
+        return getattr(Config, 'INSTANCE_THRESHOLD_AMBIGUOUS', 0.92)
+    
+    INSTANCE_THRESHOLD_HARD = 0.98  # 向量冲突：硬冲突（保留用于未来扩展）
 
     def __init__(self, component_manager: ComponentManager):
         self.component_manager = component_manager

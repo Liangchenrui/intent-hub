@@ -144,6 +144,40 @@
             </div>
           </el-form-item>
 
+          <el-divider :content-position="'left'">{{ $t('settings.diagnosticTitle') }}</el-divider>
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.regionThreshold')">
+                <el-slider 
+                  v-model="settings.REGION_THRESHOLD_SIGNIFICANT" 
+                  :min="0" 
+                  :max="1" 
+                  :step="0.01" 
+                  show-input 
+                  :format-tooltip="(val: number) => (val * 100).toFixed(1) + '%'"
+                />
+                <div style="font-size: 12px; color: #909399; margin-top: 4px;">
+                  {{ $t('settings.regionThresholdHint') }}
+                </div>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.instanceThreshold')">
+                <el-slider 
+                  v-model="settings.INSTANCE_THRESHOLD_AMBIGUOUS" 
+                  :min="0" 
+                  :max="1" 
+                  :step="0.01" 
+                  show-input 
+                  :format-tooltip="(val: number) => (val * 100).toFixed(1) + '%'"
+                />
+                <div style="font-size: 12px; color: #909399; margin-top: 4px;">
+                  {{ $t('settings.instanceThresholdHint') }}
+                </div>
+              </el-form-item>
+            </el-col>
+          </el-row>
+
           <div class="form-actions">
             <el-button type="primary" :loading="saving" @click="handleSave">{{ $t('settings.save') }}</el-button>
             <el-button @click="fetchSettings(true)">{{ $t('settings.reset') }}</el-button>
@@ -187,7 +221,9 @@ const settings = ref<Settings>({
   PREDICT_AUTH_KEY: null,
   BATCH_SIZE: 32,
   DEFAULT_ROUTE_ID: 0,
-  DEFAULT_ROUTE_NAME: 'none'
+  DEFAULT_ROUTE_NAME: 'none',
+  REGION_THRESHOLD_SIGNIFICANT: 0.85,
+  INSTANCE_THRESHOLD_AMBIGUOUS: 0.92
 });
 
 const fetchSettings = async (showResetMessage = false) => {
@@ -215,7 +251,9 @@ const fetchSettings = async (showResetMessage = false) => {
       PREDICT_AUTH_KEY: data.PREDICT_AUTH_KEY ?? null,
       BATCH_SIZE: data.BATCH_SIZE ?? 32,
       DEFAULT_ROUTE_ID: data.DEFAULT_ROUTE_ID ?? 0,
-      DEFAULT_ROUTE_NAME: data.DEFAULT_ROUTE_NAME || 'none'
+      DEFAULT_ROUTE_NAME: data.DEFAULT_ROUTE_NAME || 'none',
+      REGION_THRESHOLD_SIGNIFICANT: data.REGION_THRESHOLD_SIGNIFICANT ?? 0.85,
+      INSTANCE_THRESHOLD_AMBIGUOUS: data.INSTANCE_THRESHOLD_AMBIGUOUS ?? 0.92
     };
     // 将 Predict Key 保存到本地存储，供测试页面使用
     if (data.PREDICT_AUTH_KEY) {
@@ -282,10 +320,13 @@ const handleSave = async () => {
         LLM_MODEL: data.LLM_MODEL ?? null,
         LLM_TEMPERATURE: data.LLM_TEMPERATURE || 0.7,
         UTTERANCE_GENERATION_PROMPT: data.UTTERANCE_GENERATION_PROMPT || '',
+        AGENT_REPAIR_PROMPT: data.AGENT_REPAIR_PROMPT || '',
         PREDICT_AUTH_KEY: data.PREDICT_AUTH_KEY ?? null,
         BATCH_SIZE: data.BATCH_SIZE ?? 32,
         DEFAULT_ROUTE_ID: data.DEFAULT_ROUTE_ID ?? 0,
-        DEFAULT_ROUTE_NAME: data.DEFAULT_ROUTE_NAME || 'none'
+        DEFAULT_ROUTE_NAME: data.DEFAULT_ROUTE_NAME || 'none',
+        REGION_THRESHOLD_SIGNIFICANT: data.REGION_THRESHOLD_SIGNIFICANT ?? 0.85,
+        INSTANCE_THRESHOLD_AMBIGUOUS: data.INSTANCE_THRESHOLD_AMBIGUOUS ?? 0.92
       };
       // 将 Predict Key 保存到本地存储，供测试页面使用
       if (data.PREDICT_AUTH_KEY) {

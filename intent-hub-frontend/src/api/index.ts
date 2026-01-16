@@ -185,6 +185,10 @@ export interface Settings {
   BATCH_SIZE?: number;
   DEFAULT_ROUTE_ID?: number;
   DEFAULT_ROUTE_NAME?: string;
+  
+  // 诊断阈值配置
+  REGION_THRESHOLD_SIGNIFICANT?: number;
+  INSTANCE_THRESHOLD_AMBIGUOUS?: number;
 }
 
 export const getSettings = () => api.get<Settings>('/settings');

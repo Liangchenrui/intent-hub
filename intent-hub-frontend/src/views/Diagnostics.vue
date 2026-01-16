@@ -92,7 +92,7 @@
               <el-table-column :label="$t('diagnostics.conflictType')" width="120">
                 <template #default="{ row }">
                   <div class="type-tags">
-                    <el-tag v-if="row.region_similarity >= 0.85" size="small" type="warning" effect="dark">
+                    <el-tag v-if="row.region_similarity >= regionThreshold" size="small" type="warning" effect="dark">
                       {{ $t('diagnostics.regionOverlap') }}
                     </el-tag>
                     <el-tag v-if="row.instance_conflicts.length > 0" size="small" type="danger" effect="dark" style="margin-top: 4px">
@@ -110,7 +110,7 @@
                     </div>
                     <el-progress 
                       :percentage="Math.round(row.region_similarity * 100)" 
-                      :status="row.region_similarity > 0.95 ? 'exception' : 'warning'"
+                      :status="row.region_similarity > Math.max(0.95, regionThreshold) ? 'exception' : 'warning'"
                       :stroke-width="8"
                       :show-text="false"
                     />
@@ -487,6 +487,7 @@ import {
   getRepairSuggestions, 
   applyRepair,
   getRoutes,
+  getSettings,
   addNegativeSamples,
   type DiagnosticResult, 
   type UmapPoint2D, 
@@ -517,6 +518,10 @@ const currentSymbolSize = ref(10);
 // 颜色映射：为每个路由分配稳定颜色
 const colorByRoute = ref<Record<number, string>>({});
 const routeNames = ref<Record<number, string>>({});
+
+// 诊断阈值
+const regionThreshold = ref(0.85);
+const instanceThreshold = ref(0.92);
 
 // 修复相关状态
 const repairDialogVisible = ref(false);
@@ -1428,7 +1433,20 @@ const handleLogout = async () => {
   } catch (e) {}
 };
 
+const fetchThresholds = async () => {
+  try {
+    const res = await getSettings();
+    if (res.data) {
+      regionThreshold.value = res.data.REGION_THRESHOLD_SIGNIFICANT ?? 0.85;
+      instanceThreshold.value = res.data.INSTANCE_THRESHOLD_AMBIGUOUS ?? 0.92;
+    }
+  } catch (err) {
+    console.error('Failed to fetch settings thresholds:', err);
+  }
+};
+
 onMounted(() => {
+  fetchThresholds();
   runDiagnostics();
   // 如果初始视图是 map，自动加载点云图
   if (viewMode.value === 'map') {

@@ -101,7 +101,7 @@ class Config:
 
     AGENT_REPAIR_PROMPT: str = """你是一个 NLU 专家。
     当前存在两个意图在语义上发生了重叠，导致模型难以区分。
-    你的任务是分析意图“{name_a}”，找出其中容易与意图“{name_b}”混淆的语句并建议删除或修改，同时提供一些更具区分性的新语句。
+    你的任务是分析意图"{name_a}"，找出其中容易与意图"{name_b}"混淆的语句并建议删除或修改，同时提供一些更具区分性的新语句。
 
     意图 1 (目标分析对象): {name_a}
     描述 1: {desc_a}
@@ -110,16 +110,20 @@ class Config:
     意图 2 (冲突对照对象): {name_b}
     描述 2: {desc_b}
 
-    具体的冲突对（显示“{name_a}”中的句子与“{name_b}”中的哪些句子过于接近）: {conflicts}
+    具体的冲突对（显示"{name_a}"中的句子与"{name_b}"中的哪些句子过于接近）: {conflicts}
 
     请按以下 JSON 格式回复：
     {{
       "conflicting_utterances": ["从 '现有例句 1' 中选出最应该被删除或修改的句子"],
       "new_utterances": ["生成 3-5 个新例句，这些句子应具有更强的 {name_a} 的特征词，且明显区别于 {name_b}"],
       "negative_samples": ["生成 2-3 个负面约束例句，即：如果用户这么说，虽然语义接近 {name_a}，但实际不属于 {name_a}"],
-      "rationalization": "给出修改理由。注意：在理由中请直接使用意图的具体名称（即“{name_a}”和“{name_b}”），绝对禁止使用“意图A”、“意图B”、“Agent A”或“Agent B”这类代称。"
+      "rationalization": "给出修改理由。注意：在理由中请直接使用意图的具体名称（即"{name_a}"和"{name_b}"），绝对禁止使用"意图A"、"意图B"、"Agent A"或"Agent B"这类代称。"
     }}
     不要输出任何其他文本。"""
+
+    # 诊断阈值配置
+    REGION_THRESHOLD_SIGNIFICANT: float = 0.85  # 路由级冲突阈值（区域重叠：显著）
+    INSTANCE_THRESHOLD_AMBIGUOUS: float = 0.92  # 语料级冲突阈值（向量冲突：模糊歧义）
 
     @classmethod
     def get_settings_path(cls) -> Path:
@@ -219,6 +223,9 @@ class Config:
             "BATCH_SIZE": cls.BATCH_SIZE,
             "DEFAULT_ROUTE_ID": cls.DEFAULT_ROUTE_ID,
             "DEFAULT_ROUTE_NAME": cls.DEFAULT_ROUTE_NAME,
+            # 诊断阈值配置
+            "REGION_THRESHOLD_SIGNIFICANT": cls.REGION_THRESHOLD_SIGNIFICANT,
+            "INSTANCE_THRESHOLD_AMBIGUOUS": cls.INSTANCE_THRESHOLD_AMBIGUOUS,
         }
 
 
