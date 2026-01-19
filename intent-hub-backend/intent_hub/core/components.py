@@ -76,6 +76,7 @@ class ComponentManager:
                     batch_size=Config.BATCH_SIZE,
                     huggingface_token=Config.HUGGINGFACE_ACCESS_TOKEN,
                     huggingface_provider=Config.HUGGINGFACE_PROVIDER,
+                    huggingface_timeout=Config.HUGGINGFACE_TIMEOUT,
                 )
                 # 触发初始化以获取维度
                 _ = self._encoder.dimensions

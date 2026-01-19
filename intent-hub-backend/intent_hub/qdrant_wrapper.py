@@ -55,8 +55,10 @@ class IntentHubQdrantClient:
             # 内部使用的干净 URL
             clean_url = self.url
 
-            # 如果是云端地址，强制清理环境中的代理设置，防止 httpcore/httpx 走代理
-            if clean_url and ".qdrant.io" in clean_url:
+            # 如果是特定的外部地址，强制清理环境中的代理设置，防止 httpcore/httpx 走代理
+            if clean_url and (
+                ".qdrant.io" in clean_url or "free4inno.com" in clean_url
+            ):
                 host_only = (
                     clean_url.replace("https://", "")
                     .replace("http://", "")
@@ -84,7 +86,7 @@ class IntentHubQdrantClient:
                     )
                     clean_url = clean_url.replace(":6333", "")
 
-                self.client = QdrantClient(url=clean_url, api_key=api_key, timeout=30)
+                self.client = QdrantClient(url=clean_url, api_key=api_key, timeout=60)
                 logger.info(f"Qdrant客户端以 URL 模式初始化: {clean_url}")
             else:
                 # Host 模式初始化
@@ -134,7 +136,10 @@ class IntentHubQdrantClient:
                 logger.info(f"已确保字段 {self.ROUTE_ID_KEY} 的索引存在")
             except Exception as e:
                 # 如果索引已存在，忽略错误
-                if "already exists" not in str(e).lower() and "duplicate" not in str(e).lower():
+                if (
+                    "already exists" not in str(e).lower()
+                    and "duplicate" not in str(e).lower()
+                ):
                     logger.warning(f"创建 {self.ROUTE_ID_KEY} 索引时出现警告: {e}")
 
             # 为 is_negative 字段创建索引（用于负例向量过滤）
@@ -147,7 +152,10 @@ class IntentHubQdrantClient:
                 logger.info(f"已确保字段 {self.IS_NEGATIVE_KEY} 的索引存在")
             except Exception as e:
                 # 如果索引已存在，忽略错误
-                if "already exists" not in str(e).lower() and "duplicate" not in str(e).lower():
+                if (
+                    "already exists" not in str(e).lower()
+                    and "duplicate" not in str(e).lower()
+                ):
                     logger.warning(f"创建 {self.IS_NEGATIVE_KEY} 索引时出现警告: {e}")
 
         except Exception as e:
@@ -252,7 +260,7 @@ class IntentHubQdrantClient:
                             FieldCondition(
                                 key=self.IS_NEGATIVE_KEY, match=MatchValue(value=True)
                             )
-                        ]
+                        ],
                     ),
                     limit=batch_size,
                     offset=offset,
@@ -386,7 +394,9 @@ class IntentHubQdrantClient:
             logger.error(f"获取现有路由ID失败: {e}", exc_info=True)
             raise
 
-    def scroll_all_points(self, with_vectors: bool = True, exclude_negative: bool = True) -> List[Dict[str, Any]]:
+    def scroll_all_points(
+        self, with_vectors: bool = True, exclude_negative: bool = True
+    ) -> List[Dict[str, Any]]:
         """遍历 collection 中所有点（用于可视化/诊断等离线分析场景）
 
         Args:
@@ -432,7 +442,7 @@ class IntentHubQdrantClient:
                     payload = p.payload or {}
                     if exclude_negative and payload.get(self.IS_NEGATIVE_KEY, False):
                         continue
-                    
+
                     item: Dict[str, Any] = {"id": p.id, "payload": payload}
                     if with_vectors:
                         item["vector"] = p.vector
@@ -489,9 +499,7 @@ class IntentHubQdrantClient:
 
         try:
             self.client.upsert(collection_name=self.collection_name, points=points)
-            logger.info(
-                f"成功更新路由 {route_name} 的 {len(points)} 个负例向量点"
-            )
+            logger.info(f"成功更新路由 {route_name} 的 {len(points)} 个负例向量点")
         except Exception as e:
             logger.error(f"更新负例向量点失败: {e}", exc_info=True)
             raise
@@ -533,9 +541,7 @@ class IntentHubQdrantClient:
                         "score": point.score,
                         "payload": {
                             self.ROUTE_ID_KEY: point.payload.get(self.ROUTE_ID_KEY),
-                            self.ROUTE_NAME_KEY: point.payload.get(
-                                self.ROUTE_NAME_KEY
-                            ),
+                            self.ROUTE_NAME_KEY: point.payload.get(self.ROUTE_NAME_KEY),
                             self.UTTERANCE_KEY: point.payload.get(self.UTTERANCE_KEY),
                             self.NEGATIVE_THRESHOLD_KEY: point.payload.get(
                                 self.NEGATIVE_THRESHOLD_KEY, 0.95

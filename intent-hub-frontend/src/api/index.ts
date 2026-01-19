@@ -180,6 +180,8 @@ export interface Settings {
   
   // 认证配置
   PREDICT_AUTH_KEY?: string | null;
+  DEFAULT_USERNAME?: string;
+  DEFAULT_PASSWORD?: string;
   
   // 其他配置
   BATCH_SIZE?: number;

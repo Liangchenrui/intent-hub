@@ -25,6 +25,7 @@ class QwenEmbeddingEncoder:
         local_model_dir: Optional[str] = None,
         huggingface_token: Optional[str] = None,
         huggingface_provider: Optional[str] = None,
+        huggingface_timeout: int = 30,
     ):
         """初始化编码器
 
@@ -35,12 +36,14 @@ class QwenEmbeddingEncoder:
             local_model_dir: 本地模型存储目录，默认为 intent_hub/models
             huggingface_token: HuggingFace Access Token (可选)
             huggingface_provider: HuggingFace 推理服务提供商 (可选，如 "nebius")
+            huggingface_timeout: HuggingFace 验证超时时间 (秒)
         """
         self.model_name = model_name
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.batch_size = batch_size
         self.huggingface_token = huggingface_token
         self.huggingface_provider = huggingface_provider
+        self.huggingface_timeout = huggingface_timeout
         self._tokenizer: Optional[AutoTokenizer] = None
         self._model: Optional[AutoModel] = None
         self._dimensions: Optional[int] = None
@@ -89,7 +92,7 @@ class QwenEmbeddingEncoder:
 
             client = InferenceClient(**client_kwargs)
 
-            # 使用线程实现超时机制（10秒超时）
+            # 使用线程实现超时机制
             result_container = {"result": None, "exception": None}
 
             def api_call():
@@ -105,12 +108,12 @@ class QwenEmbeddingEncoder:
             # 启动线程执行 API 调用
             thread = threading.Thread(target=api_call, daemon=True)
             thread.start()
-            thread.join(timeout=10)  # 10秒超时
+            thread.join(timeout=self.huggingface_timeout)
 
             # 检查是否超时
             if thread.is_alive():
                 logger.warning(
-                    "HuggingFace Inference API 验证超时（10秒），将回退到本地模型"
+                    f"HuggingFace Inference API 验证超时（{self.huggingface_timeout}秒），将回退到本地模型"
                 )
                 return False
 

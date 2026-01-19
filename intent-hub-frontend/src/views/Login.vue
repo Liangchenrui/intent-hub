@@ -49,8 +49,8 @@ import api from '../api';
 
 const { t } = useI18n();
 
-const username = ref('admin');
-const password = ref('123456');
+const username = ref('');
+const password = ref('');
 const loading = ref(false);
 const error = ref('');
 const router = useRouter();

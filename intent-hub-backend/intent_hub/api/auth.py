@@ -15,8 +15,8 @@ def login(login_req: LoginRequest):
 
     请求体需要包含：
     {
-        "username": "admin",
-        "password": "telestar"
+        "username": "your_username",
+        "password": "your_password"
     }
     """
     # 验证用户名和密码

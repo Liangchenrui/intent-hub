@@ -48,9 +48,9 @@
 ```
 
 **说明**：
-- 默认用户名：`admin`
-- 默认密码需要在 `settings.json` 中配置 `DEFAULT_PASSWORD` 字段
-- 建议首次部署后立即修改默认密码
+- 默认用户名：`admin`（可在设置页面修改）
+- 默认密码：`123456`（可在设置页面修改，建议首次部署后立即修改）
+- 用户名和密码在 `settings.json` 中配置 `DEFAULT_USERNAME` 和 `DEFAULT_PASSWORD` 字段
 
 **响应** (200):
 ```json

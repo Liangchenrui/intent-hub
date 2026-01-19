@@ -7,6 +7,7 @@
     
     "HUGGINGFACE_ACCESS_TOKEN": "hf_your_token_here",
     "HUGGINGFACE_PROVIDER": "hf-inference",
+    "HUGGINGFACE_TIMEOUT": 30,
     "EMBEDDING_MODEL_NAME": "Qwen/Qwen3-Embedding-0.6B",
     "EMBEDDING_DEVICE": "cpu",
     
@@ -30,6 +31,6 @@
     "DEFAULT_ROUTE_ID": 0,
     "DEFAULT_ROUTE_NAME": "none",
     "DEFAULT_USERNAME": "admin",
-    "DEFAULT_PASSWORD": "your_password_here",
+    "DEFAULT_PASSWORD": "123456",
     "PREDICT_AUTH_KEY": "your_auth_key_here"
 }

@@ -27,6 +27,7 @@ class Config:
     HUGGINGFACE_PROVIDER: Optional[str] = (
         None  # 推理服务提供商 (可选，如 "nebius", "hf-inference" 等)
     )
+    HUGGINGFACE_TIMEOUT: int = 30  # HuggingFace 验证超时时间 (秒)
     EMBEDDING_MODEL_NAME: str = "Qwen/Qwen3-Embedding-0.6B"  # 模型名称
     EMBEDDING_DEVICE: str = "cpu"  # 本地模型使用的设备 (cpu/cuda/mps)
 
@@ -52,9 +53,9 @@ class Config:
     # Predict认证Key（如果为空则不启用认证，如果有值则启用认证并使用该值）
     PREDICT_AUTH_KEY: Optional[str] = None
 
-    # 用户配置（请在 settings.json 中配置实际值）
-    DEFAULT_USERNAME: str = "admin"
-    DEFAULT_PASSWORD: str = "123456"
+    # 用户配置（从 settings.json 读取，如果不存在则使用默认值）
+    DEFAULT_USERNAME: str = "admin"  # 默认值，会被 settings.json 覆盖
+    DEFAULT_PASSWORD: str = "123456"  # 默认值，会被 settings.json 覆盖
 
     # LLM配置（通用）
     LLM_PROVIDER: str = (
@@ -201,6 +202,7 @@ class Config:
             # Embedding模型配置
             "HUGGINGFACE_ACCESS_TOKEN": cls.HUGGINGFACE_ACCESS_TOKEN,
             "HUGGINGFACE_PROVIDER": cls.HUGGINGFACE_PROVIDER,
+            "HUGGINGFACE_TIMEOUT": cls.HUGGINGFACE_TIMEOUT,
             "EMBEDDING_MODEL_NAME": cls.EMBEDDING_MODEL_NAME,
             "EMBEDDING_DEVICE": cls.EMBEDDING_DEVICE,
             # LLM配置（通用）
@@ -219,6 +221,8 @@ class Config:
             # 认证配置
             "AUTH_ENABLED": cls.AUTH_ENABLED,
             "PREDICT_AUTH_KEY": cls.PREDICT_AUTH_KEY,
+            "DEFAULT_USERNAME": cls.DEFAULT_USERNAME,
+            "DEFAULT_PASSWORD": cls.DEFAULT_PASSWORD,
             # 其他配置
             "BATCH_SIZE": cls.BATCH_SIZE,
             "DEFAULT_ROUTE_ID": cls.DEFAULT_ROUTE_ID,

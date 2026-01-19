@@ -132,6 +132,26 @@
           </el-form-item>
 
           <el-divider :content-position="'left'">{{ $t('settings.policyTitle') }}</el-divider>
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.username')">
+                <el-input 
+                  v-model="settings.DEFAULT_USERNAME" 
+                  :placeholder="$t('settings.usernamePlaceholder')" 
+                />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.password')">
+                <el-input 
+                  v-model="settings.DEFAULT_PASSWORD" 
+                  type="password" 
+                  show-password 
+                  :placeholder="$t('settings.passwordPlaceholder')" 
+                />
+              </el-form-item>
+            </el-col>
+          </el-row>
           <el-form-item :label="$t('settings.predictAuthKey')">
             <el-input 
               v-model="settings.PREDICT_AUTH_KEY" 
@@ -219,6 +239,8 @@ const settings = ref<Settings>({
   UTTERANCE_GENERATION_PROMPT: '',
   AGENT_REPAIR_PROMPT: '',
   PREDICT_AUTH_KEY: null,
+  DEFAULT_USERNAME: 'admin',
+  DEFAULT_PASSWORD: '',
   BATCH_SIZE: 32,
   DEFAULT_ROUTE_ID: 0,
   DEFAULT_ROUTE_NAME: 'none',
@@ -249,6 +271,8 @@ const fetchSettings = async (showResetMessage = false) => {
       UTTERANCE_GENERATION_PROMPT: data.UTTERANCE_GENERATION_PROMPT || '',
       AGENT_REPAIR_PROMPT: data.AGENT_REPAIR_PROMPT || '',
       PREDICT_AUTH_KEY: data.PREDICT_AUTH_KEY ?? null,
+      DEFAULT_USERNAME: data.DEFAULT_USERNAME || 'admin',
+      DEFAULT_PASSWORD: data.DEFAULT_PASSWORD || '',
       BATCH_SIZE: data.BATCH_SIZE ?? 32,
       DEFAULT_ROUTE_ID: data.DEFAULT_ROUTE_ID ?? 0,
       DEFAULT_ROUTE_NAME: data.DEFAULT_ROUTE_NAME || 'none',
@@ -322,6 +346,8 @@ const handleSave = async () => {
         UTTERANCE_GENERATION_PROMPT: data.UTTERANCE_GENERATION_PROMPT || '',
         AGENT_REPAIR_PROMPT: data.AGENT_REPAIR_PROMPT || '',
         PREDICT_AUTH_KEY: data.PREDICT_AUTH_KEY ?? null,
+        DEFAULT_USERNAME: data.DEFAULT_USERNAME || 'admin',
+        DEFAULT_PASSWORD: data.DEFAULT_PASSWORD || '',
         BATCH_SIZE: data.BATCH_SIZE ?? 32,
         DEFAULT_ROUTE_ID: data.DEFAULT_ROUTE_ID ?? 0,
         DEFAULT_ROUTE_NAME: data.DEFAULT_ROUTE_NAME || 'none',
