@@ -18,7 +18,7 @@ huggingface-hub>=0.20.0
 # LLM Integration
 langchain-core>=0.1.0
 langchain-openai>=0.0.5
-# langchain-google-genai>=0.0.6  # 可选：Gemini支持
+langchain-google-genai>=0.0.6
 
 # ===========================================
 # 可选：本地模型支持（会显著增加镜像体积）

@@ -62,6 +62,9 @@ class QwenEmbeddingEncoder:
 
         # 确保模型目录存在
         self.local_model_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 初始化线程锁
+        self._lock = threading.Lock()
 
     def _validate_huggingface_token(self) -> bool:
         """验证 HuggingFace Token 是否有效
@@ -219,6 +222,8 @@ class QwenEmbeddingEncoder:
                 local_dir=str(local_path),
                 endpoint=self.HF_MIRROR,
                 resume_download=True,
+                # 降低并发，避免多线程下载/移动临时文件时与外部清理逻辑发生竞争
+                max_workers=1,
                 ignore_patterns=[
                     "*.DS_Store",
                     "*.git*",
@@ -231,16 +236,12 @@ class QwenEmbeddingEncoder:
 
             logger.info(f"模型下载完成: {local_path}")
         except Exception as e:
-            # 如果下载失败，清理可能创建的不完整目录
-            if local_path.exists():
-                import shutil
-
-                try:
-                    logger.warning(f"下载中断，清理不完整的模型目录: {local_path}")
-                    shutil.rmtree(local_path)
-                except Exception as cleanup_err:
-                    logger.error(f"清理失败: {cleanup_err}")
-            logger.error(f"从镜像下载模型失败: {e}", exc_info=True)
+            # 关键修复：
+            # 不要在下载异常时 rmtree(local_path)，否则 huggingface_hub 的并发线程可能仍在
+            # chmod/move *.incomplete，目录被删除会导致二次 FileNotFoundError 并进入错误循环。
+            logger.error(
+                f"从镜像下载模型失败（将保留现场以便断点续传）: {e}", exc_info=True
+            )
             raise
 
     def _get_model_path(self) -> str:
@@ -286,38 +287,31 @@ class QwenEmbeddingEncoder:
 
     def _initialize_local_model(self):
         """初始化本地模型"""
-        if self._model is None:
-            model_path = None
-            try:
-                # 获取模型路径（优先使用本地，不存在则下载）
-                model_path = self._get_model_path()
-                logger.info(f"正在加载本地编码器模型: {model_path}")
+        # 关键修复：加锁，避免多个请求同时触发下载/加载/清理造成竞争
+        with self._lock:
+            if self._model is None:
+                model_path = None
+                try:
+                    # 获取模型路径（优先使用本地，不存在则下载）
+                    model_path = self._get_model_path()
+                    logger.info(f"正在加载本地编码器模型: {model_path}")
 
-                self._tokenizer = AutoTokenizer.from_pretrained(model_path)
-                self._model = AutoModel.from_pretrained(model_path)
-                self._model.to(self.device)
-                self._model.eval()
+                    self._tokenizer = AutoTokenizer.from_pretrained(model_path)
+                    self._model = AutoModel.from_pretrained(model_path)
+                    self._model.to(self.device)
+                    self._model.eval()
 
-                # 获取模型维度
-                test_embedding = self._local_encode(["test"])
-                self._dimensions = len(test_embedding[0])
-                logger.info(
-                    f"本地编码器初始化完成，设备: {self.device}，维度: {self._dimensions}"
-                )
-            except Exception as e:
-                logger.error(f"本地编码器初始化失败: {e}", exc_info=True)
-                # 如果加载失败且目录存在，说明可能模型损坏，尝试清理以便下次重新下载
-                if model_path and Path(model_path).exists():
-                    import shutil
-
-                    try:
-                        logger.warning(
-                            f"本地模型可能损坏，清理目录以便下次重试: {model_path}"
-                        )
-                        shutil.rmtree(model_path)
-                    except Exception as cleanup_err:
-                        logger.error(f"清理损坏的模型目录失败: {cleanup_err}")
-                raise
+                    # 获取模型维度
+                    test_embedding = self._local_encode(["test"])
+                    self._dimensions = len(test_embedding[0])
+                    logger.info(
+                        f"本地编码器初始化完成，设备: {self.device}，维度: {self._dimensions}"
+                    )
+                except Exception as e:
+                    logger.error(f"本地编码器初始化失败: {e}", exc_info=True)
+                    # 关键修复：不要在这里删除模型目录
+                    # 失败原因可能是下载中断/网络抖动/并发竞争；删除目录会破坏断点续传并放大故障面。
+                    raise
 
     @property
     def dimensions(self) -> int:

@@ -24,8 +24,6 @@ except Exception:  # pragma: no cover
 class DiagnosticService:
     """诊断服务 - 处理语义重叠检测逻辑"""
 
-    CACHE_FILE = "diagnostics_cache.json"
-
     # 诊断阈值定义（从 Config 读取，提供默认值）
     @property
     def REGION_THRESHOLD_SIGNIFICANT(self) -> float:
@@ -43,9 +41,10 @@ class DiagnosticService:
 
     def __init__(self, component_manager: ComponentManager):
         self.component_manager = component_manager
-        # 获取基础目录以确保存储位置一致
-        self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.cache_path = os.path.join(self.base_dir, self.CACHE_FILE)
+        # 获取配置中的缓存路径
+        self.cache_path = Config.DIAGNOSTICS_CACHE_PATH
+        # 确保目录存在
+        os.makedirs(os.path.dirname(self.cache_path), exist_ok=True)
 
     def _load_cache(self) -> Dict[str, Any]:
         """从文件加载诊断缓存"""

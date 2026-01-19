@@ -60,6 +60,7 @@ ENV/
 .env.local
 .env.*.local
 *.env
+!.env.example
 !.env.china
 !.env.official
 
@@ -71,9 +72,8 @@ intent-hub-frontend/dist-ssr/
 # Backend specific
 intent-hub-backend/intent_hub/models/
 !intent-hub-backend/intent_hub/models/.gitkeep
-intent-hub-backend/intent_hub/settings.json
-intent-hub-backend/intent_hub/routes_config.json
-intent-hub-backend/intent_hub/diagnostics_cache.json
+data/*
+!data/.gitkeep
 
 # Large files and models
 *.safetensors

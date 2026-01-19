@@ -68,9 +68,13 @@ class RouteManager:
                 logger.error(f"配置文件路径: {self.config_path}")
                 self._routes_cache = {}
         else:
-            logger.warning(f"路由配置文件不存在: {self.config_path}")
-            logger.warning(f"当前工作目录: {os.getcwd()}")
+            logger.warning(f"路由配置文件不存在，正在初始化为空配置: {self.config_path}")
             self._routes_cache = {}
+            try:
+                # 自动创建一个空的配置文件
+                self._save_to_file()
+            except Exception as e:
+                logger.error(f"初始化空路由配置文件失败: {e}")
     
     def _save_to_file(self):
         """保存路由配置到文件"""

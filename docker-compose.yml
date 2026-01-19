@@ -8,12 +8,12 @@ services:
     container_name: intent-hub-backend
     image: ${IMAGE_PREFIX}intent-hub-backend:latest
     volumes:
-      - ./intent-hub-backend:/app
-      - model_cache:/root/.cache
-    environment:
-      - ENV=production
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
+      - ./data:/app/data
+      # 与后端 Dockerfile 中 HF_HOME=/tmp/hf_cache 对齐，确保 HuggingFace 缓存可持久化
+      - model_cache:/tmp/hf_cache
+    env_file:
+      - .env
+      - ./data/env.runtime
     ports:
       - "8000:5000"
     depends_on:
