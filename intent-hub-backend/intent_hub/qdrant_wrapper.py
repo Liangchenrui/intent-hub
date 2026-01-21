@@ -86,7 +86,7 @@ class IntentHubQdrantClient:
                     )
                     clean_url = clean_url.replace(":6333", "")
 
-                self.client = QdrantClient(url=clean_url, api_key=api_key, timeout=60)
+                self.client = QdrantClient(url=clean_url, api_key=api_key, timeout=600)
                 logger.info(f"Qdrant客户端以 URL 模式初始化: {clean_url}")
             else:
                 # Host 模式初始化

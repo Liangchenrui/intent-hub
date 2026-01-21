@@ -18,7 +18,7 @@
 
 2. **一键启动**:
    ```shell
-   docker-compose up -d
+   docker compose up -d
    ```
    或使用国内加速镜像配置：
    ```shell

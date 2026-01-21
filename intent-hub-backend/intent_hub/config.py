@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
+from intent_hub.utils.logger import logger
+
 # 获取项目根目录 (intenthub/)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 # 默认数据目录：优先使用环境变量，否则使用项目根目录下的 data 文件夹
@@ -133,12 +135,16 @@ class Config:
 
     # --- settings.json -> dotenv 同步（用于容器重启时复用UI保存的配置） ---
     # 注意：环境变量优先级最高；如果你不希望同步生成 env 文件，可设置 INTENT_HUB_ENV_SYNC_ENABLED=false
-    ENV_SYNC_ENABLED: bool = os.getenv("INTENT_HUB_ENV_SYNC_ENABLED", "True").lower() in (
+    ENV_SYNC_ENABLED: bool = os.getenv(
+        "INTENT_HUB_ENV_SYNC_ENABLED", "True"
+    ).lower() in (
         "true",
         "1",
         "yes",
     )
-    ENV_SYNC_PATH: str = os.getenv("INTENT_HUB_ENV_SYNC_PATH", str(DATA_DIR / "env.runtime"))
+    ENV_SYNC_PATH: str = os.getenv(
+        "INTENT_HUB_ENV_SYNC_PATH", str(DATA_DIR / "env.runtime")
+    )
 
     # 默认只同步“单行且关键”的配置，避免把包含大量换行的 prompt 写进 .env
     _DEFAULT_ENV_SYNC_KEYS: Sequence[str] = (
@@ -232,8 +238,19 @@ class Config:
                 cls.LLM_MODEL = cls.DEEPSEEK_MODEL
 
     @classmethod
-    def save(cls, settings_dict: Dict[str, Any]):
-        """保存配置到文件并更新类属性"""
+    def save(cls, settings_dict: Dict[str, Any]) -> bool:
+        """保存配置到文件并更新类属性
+
+        Args:
+            settings_dict: 要保存的配置字典
+
+        Returns:
+            如果 QDRANT_COLLECTION 发生变化，返回 True；否则返回 False
+        """
+        # 检测 QDRANT_COLLECTION 是否发生变化
+        old_collection = cls.QDRANT_COLLECTION
+        collection_changed = False
+
         # 过滤并更新
         update_data = {}
         for key, value in settings_dict.items():
@@ -242,6 +259,13 @@ class Config:
                 and not key.startswith("_")
                 and not callable(getattr(cls, key))
             ):
+                # 检测 QDRANT_COLLECTION 变化
+                if key == "QDRANT_COLLECTION" and value != old_collection:
+                    collection_changed = True
+                    logger.info(
+                        f"检测到 QDRANT_COLLECTION 变化: {old_collection} -> {value}"
+                    )
+
                 setattr(cls, key, value)
                 update_data[key] = value
 
@@ -265,6 +289,8 @@ class Config:
         except Exception as e:
             print(f"保存配置文件失败: {e}")
             raise e
+
+        return collection_changed
 
     @classmethod
     def _get_env_sync_keys(cls) -> Sequence[str]:
