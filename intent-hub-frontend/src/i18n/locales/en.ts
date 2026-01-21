@@ -207,6 +207,7 @@ export default {
     saveError: 'Save failed',
     saveSuccess: 'Configuration updated successfully',
     resetSuccess: 'Restored to last saved configuration',
+    conflictType: 'Conflict Type',
   },
 }
 

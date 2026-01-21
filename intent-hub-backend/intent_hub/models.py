@@ -110,6 +110,7 @@ class RouteOverlap(BaseModel):
     instance_conflicts: List[ConflictPoint] = Field(
         default_factory=list, description="具体的向量冲突对"
     )
+    total_conflicts: int = Field(default=0, description="总冲突点数量")
 
 
 class DiagnosticResult(BaseModel):

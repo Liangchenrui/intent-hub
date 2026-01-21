@@ -230,4 +230,100 @@ class SyncService:
             "skipped_routes": skipped_count,
             "total_points": total_points
         }
+    
+    def sync_route(self, route_id: int) -> Dict[str, Any]:
+        """同步单个路由到向量数据库
+        
+        Args:
+            route_id: 要同步的路由ID
+            
+        Returns:
+            包含同步结果的字典
+            
+        Raises:
+            ValueError: 如果路由不存在
+        """
+        self.component_manager.ensure_ready()
+        
+        encoder = self.component_manager.encoder
+        qdrant_client = self.component_manager.qdrant_client
+        route_manager = self.component_manager.route_manager
+        
+        # 重新加载路由配置文件（热加载）
+        route_manager.reload()
+        
+        # 获取路由配置
+        route = route_manager.get_route(route_id)
+        if not route:
+            raise ValueError(f"路由ID {route_id} 不存在")
+        
+        logger.info(f"开始同步单个路由: {route.name} (ID: {route_id})")
+        
+        # 先删除旧的向量点（包括正例和负例）
+        qdrant_client.delete_route(route_id)
+        qdrant_client.delete_route_negative_samples(route_id)
+        
+        # 重新编码并插入新的正例向量点
+        embeddings = encoder.encode(route.utterances)
+        qdrant_client.upsert_route_utterances(
+            route_id=route.id,
+            route_name=route.name,
+            utterances=route.utterances,
+            embeddings=embeddings,
+            score_threshold=route.score_threshold
+        )
+        total_points = len(route.utterances)
+        
+        # 处理负例向量
+        negative_samples = getattr(route, 'negative_samples', [])
+        total_negative_points = 0
+        if negative_samples:
+            negative_embeddings = encoder.encode(negative_samples)
+            negative_threshold = getattr(route, 'negative_threshold', 0.95)
+            qdrant_client.upsert_route_negative_samples(
+                route_id=route.id,
+                route_name=route.name,
+                negative_samples=negative_samples,
+                embeddings=negative_embeddings,
+                negative_threshold=negative_threshold,
+            )
+            total_negative_points = len(negative_samples)
+        
+        logger.info(f"成功同步路由 {route.name} (ID: {route_id})，共 {total_points} 个正例向量点，{total_negative_points} 个负例向量点")
+        
+        return {
+            "message": f"路由 {route.name} 同步完成",
+            "route_id": route_id,
+            "route_name": route.name,
+            "total_points": total_points,
+            "total_negative_points": total_negative_points
+        }
+    
+    def sync_routes(self, route_ids: list) -> Dict[str, Any]:
+        """同步多个路由到向量数据库
+        
+        Args:
+            route_ids: 要同步的路由ID列表
+            
+        Returns:
+            包含同步结果的字典
+        """
+        self.component_manager.ensure_ready()
+        
+        results = []
+        for route_id in route_ids:
+            try:
+                result = self.sync_route(route_id)
+                results.append(result)
+            except Exception as e:
+                logger.error(f"同步路由 {route_id} 失败: {e}")
+                results.append({
+                    "route_id": route_id,
+                    "error": str(e)
+                })
+        
+        return {
+            "message": f"已同步 {len([r for r in results if 'error' not in r])} 个路由",
+            "results": results
+        }
 

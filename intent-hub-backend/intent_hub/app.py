@@ -1,6 +1,7 @@
 """Flask应用主文件"""
 
 from flask import Flask
+from flask_compress import Compress
 
 # 导入API处理函数
 from intent_hub.api import (
@@ -18,6 +19,8 @@ from intent_hub.core.components import get_component_manager
 
 # 初始化Flask应用
 app = Flask(__name__)
+# 启用响应压缩
+Compress(app)
 
 
 # 注册路由
@@ -107,6 +110,13 @@ def delete_negative_samples(route_id: int):
 def reindex_route():
     """重新索引接口"""
     return reindex.reindex()
+
+
+@app.route("/reindex/sync-route", methods=["POST"])
+@require_auth
+def sync_route():
+    """同步单个或多个路由到向量数据库"""
+    return reindex.sync_route()
 
 
 @app.route("/diagnostics/overlap", methods=["GET"])

@@ -7,26 +7,31 @@ from intent_hub.models import RepairRequest, ApplyRepairRequest
 @handle_errors
 def analyze_overlap(route_id):
     """分析指定路由与其他路由的重叠情况"""
+    # 单路由详情接口默认不限制冲突数量，或者由前端参数指定
+    max_conflicts = request.args.get("max_conflicts", type=int)
+    
     component_manager = get_component_manager()
     diagnostic_service = DiagnosticService(component_manager)
     
-    result = diagnostic_service.analyze_route_overlap(route_id)
+    result = diagnostic_service.analyze_route_overlap(route_id, max_conflicts=max_conflicts)
     return jsonify(result.dict()), 200
 
 @handle_errors
 def analyze_all_overlaps():
     """全局分析所有路由的重叠情况"""
     refresh = request.args.get("refresh", "false").lower() == "true"
+    # 全局列表接口默认限制每个路由对返回的冲突点数量，以减小响应体积
+    max_conflicts = request.args.get("max_conflicts", 10, type=int)
     
     component_manager = get_component_manager()
     diagnostic_service = DiagnosticService(component_manager)
     
     if refresh:
         # 手动点击深度体检：现在改为同步执行，直接返回最新结果
-        results = diagnostic_service.analyze_all_overlaps(use_cache=False)
+        results = diagnostic_service.analyze_all_overlaps(use_cache=False, max_conflicts_per_pair=max_conflicts)
         return jsonify([r.dict() for r in results]), 200
 
-    results = diagnostic_service.analyze_all_overlaps(use_cache=True)
+    results = diagnostic_service.analyze_all_overlaps(use_cache=True, max_conflicts_per_pair=max_conflicts)
     return jsonify([r.dict() for r in results]), 200
 
 

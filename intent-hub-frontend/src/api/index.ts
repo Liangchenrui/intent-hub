@@ -111,6 +111,7 @@ export interface RouteOverlap {
   target_route_name: string;
   region_similarity: number;
   instance_conflicts: ConflictPoint[];
+  total_conflicts?: number;
 }
 
 export interface DiagnosticResult {
@@ -135,6 +136,8 @@ export const getRepairSuggestions = (sourceRouteId: number, targetRouteId: numbe
   api.post<RepairSuggestion>('/diagnostics/repair', { source_route_id: sourceRouteId, target_route_id: targetRouteId });
 export const applyRepair = (routeId: number, utterances: string[]) => 
   api.post<{ success: boolean }>('/diagnostics/apply-repair', { route_id: routeId, utterances });
+export const syncRoutes = (routeIds: number[]) => 
+  api.post<{ message: string; results: any[] }>('/reindex/sync-route', { route_ids: routeIds });
 
 export interface UmapPoint2D {
   x: number;

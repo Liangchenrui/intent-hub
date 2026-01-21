@@ -72,7 +72,7 @@ class DiagnosticService:
             return 0.0
         return float(np.dot(v1, v2) / (norm1 * norm2))
 
-    def analyze_route_overlap(self, route_id: int) -> DiagnosticResult:
+    def analyze_route_overlap(self, route_id: int, max_conflicts: Optional[int] = None) -> DiagnosticResult:
         """分析指定路由与其他所有路由的语义重叠情况"""
         self.component_manager.ensure_ready()
         qdrant_client = self.component_manager.qdrant_client
@@ -153,6 +153,16 @@ class DiagnosticService:
                                 similarity=sim,
                             )
                         )
+            
+            # 按相似度降序排序
+            instance_conflicts.sort(key=lambda x: x.similarity, reverse=True)
+            
+            # 记录冲突总数
+            total_conflicts = len(instance_conflicts)
+            
+            # 如果指定了限制，则截断
+            if max_conflicts is not None:
+                instance_conflicts = instance_conflicts[:max_conflicts]
 
             # 如果质心重叠显著，或者存在向量冲突，则记录
             if centroid_sim >= self.REGION_THRESHOLD_SIGNIFICANT or instance_conflicts:
@@ -162,6 +172,7 @@ class DiagnosticService:
                         target_route_name=other_route.name,
                         region_similarity=centroid_sim,
                         instance_conflicts=instance_conflicts,
+                        total_conflicts=total_conflicts,
                     )
                 )
 
@@ -172,7 +183,7 @@ class DiagnosticService:
             route_id=route_id, route_name=current_route.name, overlaps=overlaps
         )
 
-    def analyze_all_overlaps(self, use_cache: bool = True) -> List[DiagnosticResult]:
+    def analyze_all_overlaps(self, use_cache: bool = True, max_conflicts_per_pair: Optional[int] = None) -> List[DiagnosticResult]:
         """对所有路由进行全局重叠检测"""
         if use_cache:
             cache = self._load_cache()
@@ -182,6 +193,11 @@ class DiagnosticService:
                 for r_id_str, r_data in cache.items():
                     res = DiagnosticResult(**r_data)
                     if res.overlaps:
+                        # 在此处也应用 max_conflicts_per_pair 限制
+                        if max_conflicts_per_pair is not None:
+                            for overlap in res.overlaps:
+                                overlap.total_conflicts = len(overlap.instance_conflicts)
+                                overlap.instance_conflicts = overlap.instance_conflicts[:max_conflicts_per_pair]
                         results.append(res)
                 return results
 
@@ -192,8 +208,16 @@ class DiagnosticService:
         results = []
         cache_to_save = {}
         for route in all_routes:
+            # 计算时不应用限制，以便完整缓存
             result = self.analyze_route_overlap(route.id)
             cache_to_save[str(route.id)] = result.dict()
+            
+            # 返回结果时应用限制
+            if max_conflicts_per_pair is not None:
+                for overlap in result.overlaps:
+                    overlap.total_conflicts = len(overlap.instance_conflicts)
+                    overlap.instance_conflicts = overlap.instance_conflicts[:max_conflicts_per_pair]
+            
             if result.overlaps:
                 results.append(result)
 

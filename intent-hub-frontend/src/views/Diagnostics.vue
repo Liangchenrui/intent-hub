@@ -140,6 +140,12 @@
                         </div>
                       </div>
                     </div>
+                    <div v-if="row.total_conflicts > row.instance_conflicts.length" class="more-conflicts-tip">
+                      <el-link type="info" :underline="false" @click="handleStartRepair(result, row)">
+                        <el-icon><InfoFilled /></el-icon>
+                        还有 {{ row.total_conflicts - row.instance_conflicts.length }} 个冲突对... 点击查看详情
+                      </el-link>
+                    </div>
                     <div v-if="row.instance_conflicts.length === 0" class="no-instance-conflict">
                       <el-icon><InfoFilled /></el-icon> {{ $t('diagnostics.noOverlap') }}
                     </div>
@@ -581,6 +587,7 @@ import { Search, Warning, CircleCheckFilled, InfoFilled, MagicStick, DataAnalysi
 import * as echarts from 'echarts';
 import { 
   getOverlaps, 
+  getRouteOverlap,
   getUmapPoints, 
   getRepairSuggestions, 
   applyRepair,
@@ -590,6 +597,7 @@ import {
   reindex,
   getSettings,
   addNegativeSamples,
+  syncRoutes,
   type DiagnosticResult, 
   type UmapPoint2D, 
   type RouteOverlap,
@@ -721,7 +729,7 @@ const handleStartRepair = async (sourceRoute: DiagnosticResult, overlap: RouteOv
   currentSourceRoute.value = sourceRoute;
   currentOverlap.value = overlap;
   repairDialogVisible.value = true;
-  repairLoading.value = false; // 不再自动加载
+  repairLoading.value = false;
   suggestion.value = null;
   selectedNewUtterances.value = [];
   selectedConflictingUtterances.value = [];
@@ -729,6 +737,22 @@ const handleStartRepair = async (sourceRoute: DiagnosticResult, overlap: RouteOv
   // 重置负例列表
   sourceNegativeSamples.value = [];
   targetNegativeSamples.value = [];
+
+  // 如果当前冲突数量被截断了，则异步加载完整冲突数据以保证详情页显示正确
+  if (overlap.total_conflicts && overlap.total_conflicts > overlap.instance_conflicts.length) {
+    poolsLoading.value = true;
+    try {
+      const res = await getRouteOverlap(sourceRoute.route_id);
+      const fullOverlap = res.data.overlaps.find((o: RouteOverlap) => o.target_route_id === overlap.target_route_id);
+      if (fullOverlap) {
+        currentOverlap.value = fullOverlap;
+      }
+    } catch (e) {
+      console.error('Failed to fetch full overlap details:', e);
+    } finally {
+      poolsLoading.value = false;
+    }
+  }
 
   // 获取完整语料列表
   fetchRouteUtterances();
@@ -1107,7 +1131,7 @@ const handleDrop = async (toRouteId: number) => {
 };
 
 const applyRepairAction = async () => {
-  if (!suggestion.value || !currentSourceRoute.value) return;
+  if (!suggestion.value || !currentSourceRoute.value || !currentOverlap.value) return;
 
   applyingRepair.value = true;
   try {
@@ -1124,8 +1148,15 @@ const applyRepairAction = async () => {
     const newUtterancesToAdd = suggestion.value.new_utterances.filter((_, idx) => selectedNewUtterances.value[idx]);
     finalUtterances = [...finalUtterances, ...newUtterancesToAdd];
 
-    // 3. 应用修复
+    // 3. 应用修复（更新路由配置）
     await applyRepair(currentSourceRoute.value.route_id, finalUtterances);
+    
+    // 4. 只同步这两个路由的向量数据库（不进行全量同步）
+    const routeIds = [
+      currentSourceRoute.value.route_id,
+      currentOverlap.value.target_route_id
+    ];
+    await syncRoutes(routeIds);
     
     ElMessage.success(t('diagnostics.repairApplied'));
     repairDialogVisible.value = false;
@@ -1144,10 +1175,8 @@ const runDiagnostics = async (refresh: boolean = false): Promise<number | undefi
   loading.value = true;
   
   try {
-    // 点击“开始扫描/刷新”时，先做一次全量同步，确保诊断基于最新向量
-    if (refresh) {
-      await reindex(true);
-    }
+    // 注意：进入诊断页或点击"刷新"时，不自动触发全量同步
+    // 只有点击"重新检测"按钮时才会同步向量数据库
     const response = await getOverlaps(refresh);
     results.value = response.data;
     if (results.value.length > 0) {
@@ -1498,17 +1527,24 @@ const handleSyncAndRedetect = async () => {
 
   redetectLoading.value = true;
   try {
-    // 1. 同步全量更新到后端 (源路由和目标路由)
+    // 1. 更新路由配置到后端 (源路由和目标路由)
     await applyRepair(currentSourceRoute.value.route_id, sourceUtterances.value);
     await applyRepair(currentOverlap.value.target_route_id, targetUtterances.value);
     
-    // 2. 实时重新检测冲突 (使用全页面 loading)
+    // 2. 只同步这两个路由的向量数据库（不进行全量同步）
+    const routeIds = [
+      currentSourceRoute.value.route_id,
+      currentOverlap.value.target_route_id
+    ];
+    await syncRoutes(routeIds);
+    
+    // 3. 实时重新检测冲突 (使用全页面 loading)
     fullPageLoading.value = true;
     const response = await getOverlaps(true); // 强制刷新
     
     results.value = response.data;
 
-    // 3. 计算当前特定的冲突是否已被解决
+    // 4. 计算当前特定的冲突是否已被解决
     const updatedSource = results.value.find(r => r.route_id === currentSourceRoute.value?.route_id);
     const updatedOverlap = updatedSource?.overlaps.find(o => o.target_route_id === currentOverlap.value?.target_route_id);
     
@@ -1682,13 +1718,9 @@ const fetchThresholds = async () => {
 
 onMounted(() => {
   fetchThresholds();
-  // 进入诊断页：先做一次全量同步，确保 Qdrant 与本地 routes_config.json 一致
-  fullPageLoading.value = true;
-  reindex(true)
-    .then(() => runDiagnostics(true))
-    .finally(() => {
-      fullPageLoading.value = false;
-    });
+  // 进入诊断页时只加载现有诊断结果，不触发全量同步
+  // 只有点击"更新"或"开始扫描"按钮时才会触发同步
+  runDiagnostics(false);
   // 如果初始视图是 map，自动加载点云图
   if (viewMode.value === 'map') {
     nextTick(async () => {
@@ -1920,6 +1952,19 @@ onMounted(() => {
   font-size: 11px;
   color: #f56c6c;
   font-weight: bold;
+}
+
+.more-conflicts-tip {
+  width: 100%;
+  text-align: center;
+  padding: 8px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  margin-top: 4px;
+}
+
+.more-conflicts-tip :deep(.el-link) {
+  font-size: 13px;
 }
 
 .no-instance-conflict {
