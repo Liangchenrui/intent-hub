@@ -81,6 +81,13 @@ def generate_utterances():
     return routes.generate_utterances()
 
 
+@app.route("/routes/import", methods=["POST"])
+@require_auth
+def import_routes():
+    """从JSON导入路由配置（批量合并/覆盖）"""
+    return routes.import_routes()
+
+
 @app.route("/routes/<int:route_id>/negative-samples", methods=["POST"])
 @require_auth
 def add_negative_samples(route_id: int):

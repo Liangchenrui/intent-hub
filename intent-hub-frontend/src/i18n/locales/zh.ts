@@ -98,6 +98,7 @@ export default {
     title: 'Intent Hub',
     searchPlaceholder: '搜索 Agent 名称、描述或语料句...',
     reindex: '同步',
+    import: '导入JSON',
     add: '新增',
     id: 'ID',
     nameDesc: '名称 / 描述',
@@ -138,6 +139,9 @@ export default {
     addWarning: '新增完成，请重新进行同步',
     fetchError: '获取列表失败，请检查登录状态',
     nameRequired: '名称必填',
+    importInvalidFormat: '导入失败：JSON格式不正确（需为数组，且每项至少包含 name 与 utterances）',
+    importSuccess: '导入成功：新增 {created} 条，覆盖 {updated} 条，共 {total} 条',
+    importError: '导入失败：{detail}',
   },
   test: {
     title: '提示',

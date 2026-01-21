@@ -1144,6 +1144,10 @@ const runDiagnostics = async (refresh: boolean = false): Promise<number | undefi
   loading.value = true;
   
   try {
+    // 点击“开始扫描/刷新”时，先做一次全量同步，确保诊断基于最新向量
+    if (refresh) {
+      await reindex(true);
+    }
     const response = await getOverlaps(refresh);
     results.value = response.data;
     if (results.value.length > 0) {
@@ -1678,7 +1682,13 @@ const fetchThresholds = async () => {
 
 onMounted(() => {
   fetchThresholds();
-  runDiagnostics();
+  // 进入诊断页：先做一次全量同步，确保 Qdrant 与本地 routes_config.json 一致
+  fullPageLoading.value = true;
+  reindex(true)
+    .then(() => runDiagnostics(true))
+    .finally(() => {
+      fullPageLoading.value = false;
+    });
   // 如果初始视图是 map，自动加载点云图
   if (viewMode.value === 'map') {
     nextTick(async () => {

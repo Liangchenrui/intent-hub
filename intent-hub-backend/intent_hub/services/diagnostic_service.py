@@ -493,10 +493,9 @@ class DiagnosticService:
             raise RuntimeError(f"修复建议生成失败: {str(e)}")
 
     def apply_repair(self, route_id: int, utterances: List[str]) -> bool:
-        """应用修复建议，更新 Qdrant 中的数据"""
+        """应用修复建议（仅更新本地 routes_config.json，不自动同步向量）"""
         self.component_manager.ensure_ready()
         route_manager = self.component_manager.route_manager
-        qdrant_client = self.component_manager.qdrant_client
 
         route = route_manager.get_route(route_id)
         if not route:
@@ -505,23 +504,5 @@ class DiagnosticService:
         # 1. 更新 route_manager (内存/文件)
         route.utterances = utterances
         route_manager.update_route(route.id, route)
-
-        # 2. 更新 Qdrant
-        qdrant_client.delete_route(route_id)
-
-        # 重新编码并插入
-        encoder = self.component_manager.encoder
-        vectors = encoder.encode(utterances)
-
-        qdrant_client.upsert_route_utterances(
-            route_id=route_id,
-            route_name=route.name,
-            utterances=utterances,
-            embeddings=vectors.tolist() if hasattr(vectors, "tolist") else vectors,
-            score_threshold=route.score_threshold,
-        )
-
-        # 3. 同步触发增量诊断更新，确保前端阻塞式地等待结果
-        self.update_route_diagnostics(route_id)
 
         return True

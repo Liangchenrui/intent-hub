@@ -83,6 +83,23 @@ export const updateRoute = (id: number, data: Partial<RouteConfig>) => api.put<R
 export const deleteRoute = (id: number) => api.delete<{ message: string }>(`/routes/${id}`);
 export const generateUtterances = (data: GenerateUtterancesRequest) => api.post<RouteConfig>('/routes/generate-utterances', data);
 
+export interface ImportRoutesRequest {
+  routes: RouteConfig[];
+  mode?: 'merge' | 'replace';
+}
+
+export interface ImportRoutesResponse {
+  message: string;
+  mode: 'merge' | 'replace';
+  created: number;
+  updated: number;
+  removed: number;
+  total: number;
+}
+
+export const importRoutes = (data: ImportRoutesRequest) =>
+  api.post<ImportRoutesResponse>('/routes/import', data);
+
 export interface ConflictPoint {
   source_utterance: string;
   target_utterance: string;

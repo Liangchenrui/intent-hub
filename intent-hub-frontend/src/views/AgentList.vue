@@ -48,9 +48,25 @@
             >
               {{ $t('agent.reindex') }}
             </el-button>
+            <el-button
+              type="info"
+              plain
+              @click="triggerImport"
+              :loading="importing"
+            >
+              {{ $t('agent.import') }}
+            </el-button>
             <el-button type="primary" :icon="Plus" @click="handleAdd">{{ $t('agent.add') }}</el-button>
           </div>
         </div>
+
+        <input
+          ref="importFileInput"
+          type="file"
+          accept="application/json,.json"
+          style="display: none"
+          @change="handleImportFileChange"
+        />
 
         <el-table 
           v-loading="loading"
@@ -283,7 +299,7 @@ import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Search, Plus, Refresh, MagicStick } from '@element-plus/icons-vue';
-import { getRoutes, searchRoutes, deleteRoute, updateRoute, createRoute, generateUtterances, reindex, type RouteConfig, type GenerateUtterancesRequest } from '../api';
+import { getRoutes, searchRoutes, deleteRoute, updateRoute, createRoute, generateUtterances, reindex, importRoutes, type RouteConfig, type GenerateUtterancesRequest } from '../api';
 import LanguageSwitcher from '../components/LanguageSwitcher.vue';
 
 const { t } = useI18n();
@@ -294,9 +310,11 @@ const loading = ref(false);
 const saving = ref(false);
 const generating = ref(false);
 const reindexing = ref(false);
+const importing = ref(false);
 const genCount = ref(5);
 const searchQuery = ref('');
 const activeTab = ref('list');
+const importFileInput = ref<HTMLInputElement | null>(null);
 
 const fetchAgents = async (query: string = '') => {
   loading.value = true;
@@ -395,6 +413,59 @@ const handleReindex = async () => {
     ElMessage.success(`${message} (${t('nav.list')}: ${routes_count}, ${t('agent.utterances')}: ${total_points})`);
     fetchAgents();
   } catch (e) {} finally { reindexing.value = false; }
+};
+
+const triggerImport = () => {
+  if (importFileInput.value) {
+    // reset，确保选择同一个文件也能触发 change
+    importFileInput.value.value = '';
+    importFileInput.value.click();
+  }
+};
+
+const handleImportFileChange = async (evt: Event) => {
+  const input = evt.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+
+  importing.value = true;
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+
+    if (!Array.isArray(parsed)) {
+      return ElMessage.error(t('agent.importInvalidFormat'));
+    }
+
+    // 轻量前端校验：必须包含 name + utterances
+    for (const item of parsed) {
+      if (!item || typeof item !== 'object') {
+        return ElMessage.error(t('agent.importInvalidFormat'));
+      }
+      if (!('name' in item) || typeof item.name !== 'string' || !item.name.trim()) {
+        return ElMessage.error(t('agent.importInvalidFormat'));
+      }
+      if (!('utterances' in item) || !Array.isArray(item.utterances) || item.utterances.length === 0) {
+        return ElMessage.error(t('agent.importInvalidFormat'));
+      }
+    }
+
+    const resp = await importRoutes({ routes: parsed, mode: 'merge' });
+    localStorage.removeItem('last_full_reindex');
+    ElMessage.success(
+      t('agent.importSuccess', {
+        created: resp.data.created,
+        updated: resp.data.updated,
+        total: resp.data.total
+      })
+    );
+    fetchAgents();
+  } catch (e: any) {
+    const detail = e?.response?.data?.detail || e?.message || '';
+    ElMessage.error(t('agent.importError', { detail }));
+  } finally {
+    importing.value = false;
+  }
 };
 
 const handleGenerateAI = async () => {
