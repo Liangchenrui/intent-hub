@@ -120,28 +120,69 @@ class ComponentManager:
         if self._qdrant_client and self._encoder and self._route_manager:
             try:
                 logger.info("检查Qdrant数据同步状态...")
-                if not self._qdrant_client.has_data():
-                    logger.info("Qdrant为空，开始同步路由数据...")
-                    routes = self._route_manager.get_all_routes()
-                    if routes:
-                        total_points = 0
-                        for route in routes:
-                            embeddings = self._encoder.encode(route.utterances)
-                            self._qdrant_client.upsert_route_utterances(
-                                route_id=route.id,
-                                route_name=route.name,
-                                utterances=route.utterances,
-                                embeddings=embeddings,
-                                score_threshold=route.score_threshold,
-                            )
-                            total_points += len(route.utterances)
-                        logger.info(
-                            f"成功同步 {len(routes)} 个路由，共 {total_points} 个向量点到Qdrant"
+                
+                # 检查模型是否发生变化
+                current_model = Config.EMBEDDING_MODEL_NAME
+                stored_model = self._qdrant_client.get_collection_model_name()
+                
+                force_full_sync = False
+                if stored_model and stored_model != current_model:
+                    logger.warning(f"检测到 Embedding 模型变更: {stored_model} -> {current_model}，将执行全量重索引")
+                    self._qdrant_client.delete_all()
+                    force_full_sync = True
+                
+                # 获取本地所有路由及其哈希
+                local_routes = self._route_manager.get_all_routes()
+                local_route_hashes = {r.id: self._route_manager.compute_route_hash(r) for r in local_routes}
+                
+                # 获取 Qdrant 中已有的路由 ID 和哈希
+                qdrant_route_hashes = {} if force_full_sync else self._qdrant_client.get_existing_route_hashes()
+                
+                # 1. 找出需要删除的路由 (Qdrant 有但本地没有)
+                qdrant_ids = set(qdrant_route_hashes.keys())
+                local_ids = set(local_route_hashes.keys())
+                ids_to_delete = qdrant_ids - local_ids
+                
+                if ids_to_delete:
+                    logger.info(f"检测到 Qdrant 中存在冗余路由 {ids_to_delete}，正在清理...")
+                    for rid in ids_to_delete:
+                        self._qdrant_client.delete_route(rid)
+                
+                # 2. 找出需要更新或新增的路由
+                routes_to_sync = []
+                for route in local_routes:
+                    local_hash = local_route_hashes[route.id]
+                    qdrant_hash = qdrant_route_hashes.get(route.id)
+                    
+                    if force_full_sync or local_hash != qdrant_hash:
+                        routes_to_sync.append(route)
+                
+                if routes_to_sync:
+                    logger.info(f"检测到 {len(routes_to_sync)} 个路由需要同步/更新到 Qdrant...")
+                    total_points = 0
+                    for route in routes_to_sync:
+                        # 先删除旧的向量点（防止 ID 重排导致冲突或残留）
+                        self._qdrant_client.delete_route(route.id)
+                        
+                        # 生成并上传新向量
+                        embeddings = self._encoder.encode(route.utterances)
+                        self._qdrant_client.upsert_route_utterances(
+                            route_id=route.id,
+                            route_name=route.name,
+                            utterances=route.utterances,
+                            embeddings=embeddings,
+                            score_threshold=route.score_threshold,
+                            route_hash=local_route_hashes[route.id],
+                            model_name=current_model
                         )
-                    else:
-                        logger.warning("路由管理器中没有路由配置，Qdrant保持为空")
+                        total_points += len(route.utterances)
+                    logger.info(f"成功同步 {len(routes_to_sync)} 个路由，共 {total_points} 个向量点")
                 else:
-                    logger.info("Qdrant中已有数据，跳过同步")
+                    if not ids_to_delete:
+                        logger.info("Qdrant 数据与本地配置完全同步，跳过更新")
+                    else:
+                        logger.info("Qdrant 数据清理完成，当前已处于同步状态")
+                        
             except Exception as e:
                 logger.error(f"数据同步过程中出现错误: {e}")
 

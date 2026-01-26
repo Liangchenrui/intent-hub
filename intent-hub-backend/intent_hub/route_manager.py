@@ -252,7 +252,9 @@ class RouteManager:
             "name": route.name,
             "description": route.description,
             "utterances": sorted(route.utterances),  # 排序以确保一致性
+            "negative_samples": sorted(getattr(route, "negative_samples", [])),
             "score_threshold": route.score_threshold,
+            "negative_threshold": getattr(route, "negative_threshold", 0.95),
         }
         # 转换为JSON字符串并计算哈希
         route_json = json.dumps(route_data, ensure_ascii=False, sort_keys=True)
@@ -269,3 +271,15 @@ class RouteManager:
         """
         route = self.get_route(route_id)
         return self.compute_route_hash(route) if route else None
+
+    def get_all_route_hashes(self) -> Dict[int, str]:
+        """获取所有路由的哈希值字典
+
+        Returns:
+            {route_id: hash} 字典
+        """
+        with self._lock:
+            return {
+                route_id: self.compute_route_hash(route)
+                for route_id, route in self._routes_cache.items()
+            }

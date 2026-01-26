@@ -23,6 +23,8 @@ class IntentHubQdrantClient:
     ROUTE_ID_KEY = "route_id"
     ROUTE_NAME_KEY = "route_name"
     UTTERANCE_KEY = "utterance"
+    ROUTE_HASH_KEY = "route_hash"  # 新增：路由配置哈希值
+    MODEL_NAME_KEY = "model_name"  # 新增：模型名称标识
     SCORE_THRESHOLD_KEY = "score_threshold"
     IS_NEGATIVE_KEY = "is_negative"  # 标识是否为负例向量
     NEGATIVE_THRESHOLD_KEY = "negative_threshold"  # 负例阈值
@@ -169,6 +171,8 @@ class IntentHubQdrantClient:
         utterances: List[str],
         embeddings: List[List[float]],
         score_threshold: float,
+        route_hash: Optional[str] = None,  # 新增：路由哈希
+        model_name: Optional[str] = None,  # 新增：模型名称
     ):
         """插入或更新路由的utterances向量
 
@@ -178,6 +182,8 @@ class IntentHubQdrantClient:
             utterances: 示例语句列表
             embeddings: 对应的向量列表
             score_threshold: 相似度阈值
+            route_hash: 路由配置的哈希值
+            model_name: 当前使用的 Embedding 模型名称
         """
         if len(utterances) != len(embeddings):
             raise ValueError("utterances和embeddings长度不匹配")
@@ -195,6 +201,10 @@ class IntentHubQdrantClient:
                 self.UTTERANCE_KEY: utterance,
                 self.SCORE_THRESHOLD_KEY: score_threshold,
             }
+            if route_hash:
+                payload[self.ROUTE_HASH_KEY] = route_hash
+            if model_name:
+                payload[self.MODEL_NAME_KEY] = model_name
 
             points.append(PointStruct(id=point_id, vector=embedding, payload=payload))
 
@@ -393,6 +403,67 @@ class IntentHubQdrantClient:
         except Exception as e:
             logger.error(f"获取现有路由ID失败: {e}", exc_info=True)
             raise
+
+    def get_existing_route_hashes(self) -> Dict[int, str]:
+        """获取Qdrant中所有现有的路由ID及其对应的哈希值
+
+        Returns:
+            {route_id: hash} 字典
+        """
+        try:
+            route_hashes = {}
+            offset = None
+            batch_size = 100
+
+            while True:
+                result = self.client.scroll(
+                    collection_name=self.collection_name,
+                    limit=batch_size,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+
+                points, next_offset = result
+                if not points:
+                    break
+
+                for point in points:
+                    payload = point.payload or {}
+                    route_id = payload.get(self.ROUTE_ID_KEY)
+                    route_hash = payload.get(self.ROUTE_HASH_KEY)
+                    if route_id is not None and route_hash is not None:
+                        # 如果同一个 ID 有多个点，哈希应该是一致的，这里直接覆盖
+                        route_hashes[route_id] = route_hash
+
+                offset = next_offset
+                if next_offset is None:
+                    break
+
+            return route_hashes
+        except Exception as e:
+            logger.error(f"获取现有路由哈希失败: {e}", exc_info=True)
+            return {}
+
+    def get_collection_model_name(self) -> Optional[str]:
+        """获取集合中存储的模型名称（通过检查第一个点的 payload）
+
+        Returns:
+            模型名称或 None
+        """
+        try:
+            result = self.client.scroll(
+                collection_name=self.collection_name,
+                limit=1,
+                with_payload=True,
+                with_vectors=False,
+            )
+            points, _ = result
+            if points and points[0].payload:
+                return points[0].payload.get(self.MODEL_NAME_KEY)
+            return None
+        except Exception:
+            return None
 
     def scroll_all_points(
         self, with_vectors: bool = True, exclude_negative: bool = True

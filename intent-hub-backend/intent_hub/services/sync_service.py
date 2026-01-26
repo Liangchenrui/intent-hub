@@ -2,6 +2,7 @@
 
 from typing import Any, Dict
 
+from intent_hub.config import Config
 from intent_hub.core.components import ComponentManager
 from intent_hub.utils.logger import logger
 
@@ -40,14 +41,14 @@ class SyncService:
         config_route_ids = {route.id for route in config_routes}
 
         if force_full:
-            return self._full_reindex(config_routes, encoder, qdrant_client)
+            return self._full_reindex(config_routes, encoder, qdrant_client, route_manager)
         else:
             return self._incremental_reindex(
                 config_routes, config_route_ids, encoder, qdrant_client, route_manager
             )
 
     def _full_reindex(
-        self, config_routes: list, encoder, qdrant_client
+        self, config_routes: list, encoder, qdrant_client, route_manager
     ) -> Dict[str, Any]:
         """全量重建模式：清空后重新创建"""
         logger.info("执行全量重建模式")
@@ -66,6 +67,8 @@ class SyncService:
                     utterances=route.utterances,
                     embeddings=embeddings,
                     score_threshold=route.score_threshold,
+                    route_hash=route_manager.compute_route_hash(route),
+                    model_name=Config.EMBEDDING_MODEL_NAME,
                 )
                 total_points += len(route.utterances)
 
@@ -132,10 +135,11 @@ class SyncService:
         """增量更新模式：只更新变化的路由"""
         logger.info("执行增量更新模式")
 
-        # 3. 获取Qdrant中现有的路由ID集合
-        existing_route_ids = qdrant_client.get_existing_route_ids()
+        # 3. 获取 Qdrant 中现有的路由 ID 和哈希
+        qdrant_route_hashes = qdrant_client.get_existing_route_hashes()
+        existing_route_ids = set(qdrant_route_hashes.keys())
 
-        # 4. 计算需要删除的路由（在Qdrant中存在但配置文件中不存在）
+        # 4. 计算需要删除的路由（在 Qdrant 中存在但配置文件中不存在）
         routes_to_delete = existing_route_ids - config_route_ids
         deleted_count = 0
         for route_id in routes_to_delete:
@@ -151,12 +155,23 @@ class SyncService:
         total_points = 0
 
         for route in config_routes:
-            route_hash = route_manager.compute_route_hash(route)
+            local_hash = route_manager.compute_route_hash(route)
+            qdrant_hash = qdrant_route_hashes.get(route.id)
+            
             is_new_route = route.id not in existing_route_ids
+            needs_update = not is_new_route and local_hash != qdrant_hash
 
-            if is_new_route:
-                # 新路由：直接插入
-                logger.info(f"新增路由: {route.name} (ID: {route.id})")
+            if is_new_route or needs_update:
+                if is_new_route:
+                    logger.info(f"新增路由: {route.name} (ID: {route.id})")
+                    new_count += 1
+                else:
+                    logger.info(f"更新路由 (哈希变更): {route.name} (ID: {route.id})")
+                    # 先删除旧的向量点（包括正例和负例）
+                    qdrant_client.delete_route(route.id)
+                    qdrant_client.delete_route_negative_samples(route.id)
+                    updated_count += 1
+
                 # 处理正例向量
                 embeddings = encoder.encode(route.utterances)
                 qdrant_client.upsert_route_utterances(
@@ -165,6 +180,8 @@ class SyncService:
                     utterances=route.utterances,
                     embeddings=embeddings,
                     score_threshold=route.score_threshold,
+                    route_hash=local_hash,
+                    model_name=Config.EMBEDDING_MODEL_NAME,
                 )
                 total_points += len(route.utterances)
 
@@ -180,43 +197,8 @@ class SyncService:
                         embeddings=negative_embeddings,
                         negative_threshold=negative_threshold,
                     )
-
-                new_count += 1
             else:
-                # 现有路由：检查是否需要更新
-                # 由于无法直接从Qdrant获取路由的哈希值，我们采用保守策略：
-                # 先删除旧向量点，再插入新的（确保一致性）
-                # 这样可以处理utterances变化、名称变化、阈值变化等情况
-                logger.info(f"更新路由: {route.name} (ID: {route.id})")
-                # 先删除旧的向量点（包括正例和负例）
-                qdrant_client.delete_route(route.id)
-                qdrant_client.delete_route_negative_samples(route.id)
-
-                # 重新编码并插入新的正例向量点
-                embeddings = encoder.encode(route.utterances)
-                qdrant_client.upsert_route_utterances(
-                    route_id=route.id,
-                    route_name=route.name,
-                    utterances=route.utterances,
-                    embeddings=embeddings,
-                    score_threshold=route.score_threshold,
-                )
-                total_points += len(route.utterances)
-
-                # 处理负例向量
-                negative_samples = getattr(route, "negative_samples", [])
-                if negative_samples:
-                    negative_embeddings = encoder.encode(negative_samples)
-                    negative_threshold = getattr(route, "negative_threshold", 0.95)
-                    qdrant_client.upsert_route_negative_samples(
-                        route_id=route.id,
-                        route_name=route.name,
-                        negative_samples=negative_samples,
-                        embeddings=negative_embeddings,
-                        negative_threshold=negative_threshold,
-                    )
-
-                updated_count += 1
+                skipped_count += 1
 
         # 处理被删除的路由缓存清理
         if routes_to_delete:
@@ -291,6 +273,8 @@ class SyncService:
             utterances=route.utterances,
             embeddings=embeddings,
             score_threshold=route.score_threshold,
+            route_hash=route_manager.compute_route_hash(route),
+            model_name=Config.EMBEDDING_MODEL_NAME,
         )
         total_points = len(route.utterances)
 
