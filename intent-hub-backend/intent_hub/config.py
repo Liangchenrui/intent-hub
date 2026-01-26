@@ -3,7 +3,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Optional
 
 from intent_hub.utils.logger import logger
 
@@ -133,54 +133,6 @@ class Config:
     REGION_THRESHOLD_SIGNIFICANT: float = 0.85  # 路由级冲突阈值（区域重叠：显著）
     INSTANCE_THRESHOLD_AMBIGUOUS: float = 0.92  # 语料级冲突阈值（向量冲突：模糊歧义）
 
-    # --- settings.json -> dotenv 同步（用于容器重启时复用UI保存的配置） ---
-    # 注意：环境变量优先级最高；如果你不希望同步生成 env 文件，可设置 INTENT_HUB_ENV_SYNC_ENABLED=false
-    ENV_SYNC_ENABLED: bool = os.getenv(
-        "INTENT_HUB_ENV_SYNC_ENABLED", "True"
-    ).lower() in (
-        "true",
-        "1",
-        "yes",
-    )
-    ENV_SYNC_PATH: str = os.getenv(
-        "INTENT_HUB_ENV_SYNC_PATH", str(DATA_DIR / "env.runtime")
-    )
-
-    # 默认只同步“单行且关键”的配置，避免把包含大量换行的 prompt 写进 .env
-    _DEFAULT_ENV_SYNC_KEYS: Sequence[str] = (
-        # Qdrant
-        "QDRANT_URL",
-        "QDRANT_COLLECTION",
-        "QDRANT_API_KEY",
-        # Embedding
-        "HUGGINGFACE_ACCESS_TOKEN",
-        "HUGGINGFACE_PROVIDER",
-        "HUGGINGFACE_TIMEOUT",
-        "EMBEDDING_MODEL_NAME",
-        "EMBEDDING_DEVICE",
-        # LLM
-        "LLM_PROVIDER",
-        "LLM_API_KEY",
-        "LLM_BASE_URL",
-        "LLM_MODEL",
-        "LLM_TEMPERATURE",
-        "DEEPSEEK_API_KEY",
-        "DEEPSEEK_BASE_URL",
-        "DEEPSEEK_MODEL",
-        # Auth
-        "AUTH_ENABLED",
-        "PREDICT_AUTH_KEY",
-        "DEFAULT_USERNAME",
-        "DEFAULT_PASSWORD",
-        # Perf / routing defaults
-        "BATCH_SIZE",
-        "DEFAULT_ROUTE_ID",
-        "DEFAULT_ROUTE_NAME",
-        # Diagnostics thresholds
-        "REGION_THRESHOLD_SIGNIFICANT",
-        "INSTANCE_THRESHOLD_AMBIGUOUS",
-    )
-
     @classmethod
     def get_settings_path(cls) -> Path:
         """获取设置文件的绝对路径"""
@@ -188,24 +140,14 @@ class Config:
 
     @classmethod
     def load(cls):
-        """从文件加载配置并应用环境变量覆盖"""
-        # 1. 首先尝试从外部 data 目录下的 settings.json 加载
-        path = cls.get_settings_path()
-
-        # 确保数据目录存在
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-        if path.exists():
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    settings = json.load(f)
-                    for key, value in settings.items():
-                        if hasattr(cls, key) and not key.startswith("_"):
-                            setattr(cls, key, value)
-            except Exception as e:
-                print(f"加载配置文件失败: {e}")
-
-        # 2. 环境变量覆盖 (最高优先级)
+        """从文件加载配置并应用优先级覆盖
+        
+        优先级顺序 (由低到高):
+        1. 类属性默认值
+        2. 环境变量 (Level 2: 基础设施配置)
+        3. settings.json (Level 3: 用户真相 SSoT)
+        """
+        # 1. 环境变量覆盖
         for key in cls.to_dict().keys():
             env_val = os.getenv(key)
             if env_val is not None:
@@ -222,6 +164,21 @@ class Config:
                         setattr(cls, key, env_val)
                 except Exception as e:
                     print(f"转换环境变量 {key}={env_val} 失败: {e}")
+
+        # 2. 从 settings.json 加载 (最高优先级，覆盖环境变量)
+        path = cls.get_settings_path()
+        # 确保数据目录存在
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        if path.exists():
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    settings = json.load(f)
+                    for key, value in settings.items():
+                        if hasattr(cls, key) and not key.startswith("_"):
+                            setattr(cls, key, value)
+            except Exception as e:
+                print(f"加载配置文件失败: {e}")
 
         # 处理向后兼容
         cls._apply_backward_compatibility()
@@ -284,73 +241,11 @@ class Config:
             # 保存后应用向后兼容性
             cls._apply_backward_compatibility()
 
-            # 将 settings.json 同步生成到 dotenv（用于 docker-compose 重启时加载）
-            cls._sync_settings_to_env(existing_settings)
         except Exception as e:
             print(f"保存配置文件失败: {e}")
             raise e
 
         return collection_changed
-
-    @classmethod
-    def _get_env_sync_keys(cls) -> Sequence[str]:
-        """获取需要同步到 dotenv 的 keys（可通过环境变量覆盖）"""
-        raw = os.getenv("INTENT_HUB_ENV_SYNC_KEYS", "").strip()
-        if not raw:
-            return cls._DEFAULT_ENV_SYNC_KEYS
-        # 允许逗号分隔
-        return tuple(k.strip() for k in raw.split(",") if k.strip())
-
-    @staticmethod
-    def _dotenv_escape(value: str) -> str:
-        """
-        将值编码为 dotenv 兼容的单行字符串。
-        - 对包含空格/特殊字符/换行的值使用双引号
-        - 将换行转换为 \n，避免破坏 .env 行结构
-        """
-        v = value.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "")
-        needs_quotes = any(ch in v for ch in (" ", "#", "=", '"', "\t")) or "\\n" in v
-        if needs_quotes:
-            v = v.replace('"', '\\"')
-            return f'"{v}"'
-        return v
-
-    @classmethod
-    def _sync_settings_to_env(cls, settings: Dict[str, Any]) -> None:
-        """把 settings.json 中的配置同步写入 dotenv 文件（默认 data/.env.runtime）"""
-        if not cls.ENV_SYNC_ENABLED:
-            return
-
-        try:
-            env_path = Path(cls.ENV_SYNC_PATH)
-            env_path.parent.mkdir(parents=True, exist_ok=True)
-
-            keys = cls._get_env_sync_keys()
-            lines = [
-                "# Auto-generated by Intent Hub (settings.json -> env sync).",
-                "# Do NOT edit manually unless you know what you're doing.",
-                "",
-            ]
-
-            for key in keys:
-                # 只同步已存在且非 None 的值，避免用空值覆盖行为
-                if key not in settings:
-                    continue
-                val = settings.get(key)
-                if val is None:
-                    continue
-
-                if isinstance(val, bool):
-                    s = "true" if val else "false"
-                else:
-                    s = str(val)
-                lines.append(f"{key}={cls._dotenv_escape(s)}")
-
-            lines.append("")
-            env_path.write_text("\n".join(lines), encoding="utf-8")
-        except Exception as e:
-            # 同步失败不应影响主流程（settings.json 已成功保存）
-            print(f"同步 env 文件失败: {e}")
 
     @classmethod
     def to_dict(cls) -> Dict[str, Any]:

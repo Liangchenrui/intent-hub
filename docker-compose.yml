@@ -13,7 +13,6 @@ services:
       - model_cache:/tmp/hf_cache
     env_file:
       - .env
-      - ./data/env.runtime
     ports:
       - "8000:5000"
     depends_on:
