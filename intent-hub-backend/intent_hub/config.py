@@ -29,7 +29,7 @@ class Config:
     # Embedding模型配置
     HUGGINGFACE_ACCESS_TOKEN: Optional[str] = os.getenv("HUGGINGFACE_ACCESS_TOKEN")
     HUGGINGFACE_PROVIDER: Optional[str] = os.getenv("HUGGINGFACE_PROVIDER")
-    HUGGINGFACE_TIMEOUT: int = int(os.getenv("HUGGINGFACE_TIMEOUT", 30))
+    HUGGINGFACE_TIMEOUT: int = int(os.getenv("HUGGINGFACE_TIMEOUT", 60))
     EMBEDDING_MODEL_NAME: str = os.getenv(
         "EMBEDDING_MODEL_NAME", "Qwen/Qwen3-Embedding-0.6B"
     )

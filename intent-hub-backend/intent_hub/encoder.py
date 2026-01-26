@@ -70,108 +70,75 @@ class QwenEmbeddingEncoder:
         """验证 HuggingFace Token 是否有效
 
         Returns:
-            如果 Token 有效且 Inference API 可用返回 True，否则返回 False
+            如果 Token 有效返回 True，否则返回 False
         """
         if not self.huggingface_token:
             logger.info("未配置 HuggingFace Access Token，将使用本地模型")
             return False
 
         try:
-            from huggingface_hub import InferenceClient
+            from huggingface_hub import HfApi, InferenceClient
+
+            # 兼容性处理：如果 provider 是 "hf-inference"，这通常意味着用户想用官方服务
+            # 在这种情况下，InferenceClient 的 provider 应该为 None
+            actual_provider = self.huggingface_provider
+            if actual_provider == "hf-inference":
+                actual_provider = None
 
             provider_info = (
-                f" (provider: {self.huggingface_provider})"
-                if self.huggingface_provider
-                else ""
+                f" (provider: {actual_provider})"
+                if actual_provider
+                else " (official)"
             )
             logger.info(
-                f"正在验证 HuggingFace Token 并测试 Inference API{provider_info}..."
+                f"正在验证 HuggingFace Token{provider_info}..."
             )
 
-            # 创建 InferenceClient
-            client_kwargs = {"api_key": self.huggingface_token}
-            if self.huggingface_provider:
-                client_kwargs["provider"] = self.huggingface_provider
-
-            client = InferenceClient(**client_kwargs)
-
-            # 使用线程实现超时机制
-            result_container = {"result": None, "exception": None}
-
-            def api_call():
-                """在独立线程中执行 API 调用"""
+            # 第一步：快速验证 Token 是否有效 (使用 whoami，非阻塞模型加载)
+            api = HfApi(token=self.huggingface_token)
+            
+            # 使用较短的超时时间验证 Token
+            result_container = {"valid": False, "error": None}
+            def check_token():
                 try:
-                    result_container["result"] = client.feature_extraction(
-                        "test",
-                        model=self.model_name,
-                    )
+                    api.whoami()
+                    result_container["valid"] = True
                 except Exception as e:
-                    result_container["exception"] = e
+                    result_container["error"] = e
 
-            # 启动线程执行 API 调用
-            thread = threading.Thread(target=api_call, daemon=True)
+            thread = threading.Thread(target=check_token, daemon=True)
             thread.start()
-            thread.join(timeout=self.huggingface_timeout)
+            thread.join(timeout=10) # Token 验证不应超过 10 秒
 
-            # 检查是否超时
             if thread.is_alive():
-                logger.warning(
-                    f"HuggingFace Inference API 验证超时（{self.huggingface_timeout}秒），将回退到本地模型"
-                )
+                logger.warning("HuggingFace Token 验证超时，网络环境可能不佳")
                 return False
 
-            # 检查是否有异常
-            if result_container["exception"]:
-                raise result_container["exception"]
-
-            result = result_container["result"]
-            if result is not None:
-                self._inference_client = client
-                logger.info("HuggingFace Inference API 验证成功，将使用远程服务")
-                return True
-            else:
-                logger.warning("HuggingFace Inference API 返回空结果，将回退到本地模型")
+            if not result_container["valid"]:
+                error_msg = str(result_container["error"]).lower()
+                if "401" in error_msg or "unauthorized" in error_msg:
+                    logger.warning("HuggingFace Token 无效或已过期")
+                else:
+                    logger.warning(f"HuggingFace Token 验证异常: {result_container['error']}")
                 return False
+
+            # 第二步：初始化 Client (不立即测试推理，避免启动阻塞)
+            client_kwargs = {
+                "api_key": self.huggingface_token,
+                "timeout": self.huggingface_timeout
+            }
+            if actual_provider:
+                client_kwargs["provider"] = actual_provider
+
+            self._inference_client = InferenceClient(**client_kwargs)
+            logger.info("HuggingFace Token 验证成功，将使用远程服务")
+            return True
 
         except ImportError:
             logger.warning("未安装 huggingface_hub 库，将使用本地模型")
             return False
         except Exception as e:
-            # 获取详细错误信息
-            error_msg = str(e).lower() if str(e) else ""
-            error_type = type(e).__name__
-            error_detail = repr(e) if not str(e) else str(e)
-
-            if (
-                "401" in error_msg
-                or "unauthorized" in error_msg
-                or "invalid" in error_msg
-            ):
-                logger.warning("HuggingFace Token 无效或已过期，将回退到本地模型")
-            elif "503" in error_msg or "loading" in error_msg:
-                # 模型正在加载中，也视为可用
-                logger.info(
-                    "HuggingFace 模型正在加载中，将使用远程服务 (首次请求可能较慢)"
-                )
-                try:
-                    from huggingface_hub import InferenceClient
-
-                    client_kwargs = {"api_key": self.huggingface_token}
-                    if self.huggingface_provider:
-                        client_kwargs["provider"] = self.huggingface_provider
-                    self._inference_client = InferenceClient(**client_kwargs)
-                    return True
-                except Exception:
-                    pass
-            elif "not supported" in error_msg or "not available" in error_msg:
-                logger.warning(
-                    f"模型 {self.model_name} 不支持 HuggingFace Inference API，将回退到本地模型"
-                )
-            else:
-                logger.warning(
-                    f"HuggingFace Inference API 验证失败 [{error_type}]: {error_detail}，将回退到本地模型。"
-                    f"提示: 该模型可能不在免费推理服务支持列表中。"
-                )
+            logger.warning(f"HuggingFace 验证过程出现意外错误: {e}")
             return False
 
     def _get_local_model_path(self) -> Path:
@@ -358,7 +325,7 @@ class QwenEmbeddingEncoder:
                     # 模型正在加载，等待后重试
                     import time
 
-                    logger.info("HuggingFace 模型正在加载，等待 20 秒后重试...")
+                    logger.info("HuggingFace 模型正在加载，等待 20 秒后重试 (Inference API 可能需要几分钟来启动冷模型)...")
                     time.sleep(20)
                     return self._remote_encode(texts)
                 else:
