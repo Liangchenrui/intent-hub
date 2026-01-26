@@ -350,10 +350,10 @@
                 @click="triggerRepairSuggestions"
                 :loading="repairLoading"
               >
-                {{ $t('diagnostics.triggerRepairSuggestion') || '获取强化建议' }}
+                {{ $t('diagnostics.getEnhancedSuggestions') }}
               </el-button>
             </h4>
-            <div v-loading="repairLoading" class="suggestion-content">
+            <div v-loading="repairLoading" :element-loading-text="repairLoading ? (t('diagnostics.repairLoading') || '正在生成修复建议，LLM处理可能需要1-3分钟，请耐心等待...') : ''" class="suggestion-content">
               <div v-if="suggestion" class="suggestion-box">
                 <div class="rationalization-card">
                   <el-icon><InfoFilled /></el-icon>
@@ -400,6 +400,28 @@
                         </div>
                       </div>
                     </div>
+                    
+                    <div class="s-list" v-if="suggestion.negative_samples.length">
+                      <span class="s-label">{{ $t('diagnostics.suggestedNegativeSamplesFor', { name: currentSourceRoute?.route_name }) || `推荐的新负向语料（用于 "${currentSourceRoute?.route_name}"）` }}</span>
+                      <div class="suggestion-card-list">
+                        <div 
+                          v-for="(_, idx) in suggestion.negative_samples" 
+                          :key="'neg-'+idx" 
+                          class="suggestion-card-item negative-type"
+                          :class="{ 'is-selected': selectedNegativeSamples[idx] }"
+                        >
+                          <div class="card-checkbox">
+                            <el-checkbox v-model="selectedNegativeSamples[idx]" @click.stop />
+                          </div>
+                          <el-input 
+                            v-model="suggestion.negative_samples[idx]" 
+                            size="small"
+                            class="suggestion-input"
+                            @click.stop
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div v-else-if="!repairLoading" class="empty-text">
@@ -430,7 +452,7 @@
               {{ $t('diagnostics.redetect') }}
             </el-button>
             <el-button 
-              v-if="suggestion && (suggestion.conflicting_utterances.length || suggestion.new_utterances.length)"
+              v-if="suggestion && (suggestion.conflicting_utterances.length || suggestion.new_utterances.length || suggestion.negative_samples.length)"
               type="primary" 
               @click="applyRepairAction" 
               :loading="applyingRepair"
@@ -644,6 +666,7 @@ const currentSourceRoute = ref<DiagnosticResult | null>(null);
 const currentOverlap = ref<RouteOverlap | null>(null);
 const selectedNewUtterances = ref<boolean[]>([]);
 const selectedConflictingUtterances = ref<boolean[]>([]);
+const selectedNegativeSamples = ref<boolean[]>([]);
 
 // 合并路由相关状态
 const mergeDialogVisible = ref(false);
@@ -733,6 +756,7 @@ const handleStartRepair = async (sourceRoute: DiagnosticResult, overlap: RouteOv
   suggestion.value = null;
   selectedNewUtterances.value = [];
   selectedConflictingUtterances.value = [];
+  selectedNegativeSamples.value = [];
   
   // 重置负例列表
   sourceNegativeSamples.value = [];
@@ -768,13 +792,23 @@ const triggerRepairSuggestions = async () => {
   
   repairLoading.value = true;
   try {
-    const response = await getRepairSuggestions(currentSourceRoute.value.route_id, currentOverlap.value.target_route_id);
+    const response = await getRepairSuggestions(
+      currentSourceRoute.value.route_id, 
+      currentOverlap.value.target_route_id,
+      true // Request negative samples
+    );
     suggestion.value = response.data;
     selectedNewUtterances.value = new Array(suggestion.value.new_utterances.length).fill(true);
     selectedConflictingUtterances.value = new Array(suggestion.value.conflicting_utterances.length).fill(true);
-  } catch (error) {
+    selectedNegativeSamples.value = new Array(suggestion.value.negative_samples.length).fill(true);
+  } catch (error: any) {
     console.error('Failed to get repair suggestions:', error);
-    ElMessage.warning(t('diagnostics.repairError'));
+    // 检查是否是超时错误
+    if (error.response?.status === 504 || error.isTimeout || error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+      ElMessage.error(t('diagnostics.repairTimeout') || '请求超时，LLM处理时间较长，请稍后重试或检查后端服务状态');
+    } else {
+      ElMessage.warning(t('diagnostics.repairError') || '获取修复建议失败，请稍后重试');
+    }
   } finally {
     repairLoading.value = false;
   }
@@ -1151,7 +1185,17 @@ const applyRepairAction = async () => {
     // 3. 应用修复（更新路由配置）
     await applyRepair(currentSourceRoute.value.route_id, finalUtterances);
     
-    // 4. 只同步这两个路由的向量数据库（不进行全量同步）
+    // 4. 处理负向语料（如果有选中的）
+    const negativeSamplesToAdd = suggestion.value.negative_samples.filter((_, idx) => selectedNegativeSamples.value[idx]);
+    if (negativeSamplesToAdd.length > 0) {
+      // 获取当前路由的负例列表
+      const currentNegativeSamples = currentRoute.negative_samples || [];
+      // 合并新的负例（去重）
+      const updatedNegativeSamples = Array.from(new Set([...currentNegativeSamples, ...negativeSamplesToAdd]));
+      await addNegativeSamples(currentSourceRoute.value.route_id, { negative_samples: updatedNegativeSamples });
+    }
+    
+    // 5. 只同步这两个路由的向量数据库（不进行全量同步）
     const routeIds = [
       currentSourceRoute.value.route_id,
       currentOverlap.value.target_route_id
@@ -2018,7 +2062,7 @@ onMounted(() => {
 }
 
 .repair-dialog :deep(.el-dialog__body) {
-  padding: 0 20px 20px 20px;
+  padding: 0 20px 40px 20px; /* Increased bottom padding to prevent overlap with footer */
 }
 
 .repair-container {
@@ -2048,6 +2092,22 @@ onMounted(() => {
   border-radius: 12px;
   padding: 0;
   border: none;
+}
+
+.suggestion-content {
+  min-height: 150px; /* Give it enough space for the loading text */
+  display: flex;
+  flex-direction: column;
+  justify-content: center; /* Center the loading text vertically */
+  align-items: center; /* Center the loading text horizontally */
+  padding-bottom: 80px; /* Add enough padding to prevent overlap with footer */
+  margin-bottom: 20px; /* Space between content and footer */
+  position: relative; /* Ensure proper positioning context */
+}
+
+.suggestion-section {
+  margin-bottom: 20px; /* Add margin to prevent overlap with footer */
+  padding-bottom: 10px; /* Additional padding for safety */
 }
 
 .rationalization-card {
@@ -2128,6 +2188,20 @@ onMounted(() => {
 .suggestion-card-item.delete-type .card-checkbox :deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
   background-color: #f56c6c;
   border-color: #f56c6c;
+}
+
+.suggestion-card-item.negative-type {
+  border-left: 4px solid #e6a23c;
+}
+
+.suggestion-card-item.negative-type.is-selected {
+  border-color: #e6a23c;
+  background: #fef8f0;
+}
+
+.suggestion-card-item.negative-type .card-checkbox :deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
+  background-color: #e6a23c;
+  border-color: #e6a23c;
 }
 
 .suggestion-text {

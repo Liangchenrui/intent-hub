@@ -39,7 +39,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// 响应拦截器：处理 401
+// 响应拦截器：处理 401 和超时错误
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -47,6 +47,10 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !error.config?.url?.includes('/auth/login')) {
       localStorage.removeItem('api_key');
       window.location.href = '/login';
+    }
+    // 处理超时错误（504 Gateway Timeout 或 timeout）
+    if (error.response?.status === 504 || error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+      error.isTimeout = true;
     }
     return Promise.reject(error);
   }
@@ -132,8 +136,11 @@ export interface RepairSuggestion {
 export const getOverlaps = (refresh: boolean = false) => 
   api.get<DiagnosticResult[]>('/diagnostics/overlap', { params: { refresh } });
 export const getRouteOverlap = (routeId: number) => api.get<DiagnosticResult>(`/diagnostics/overlap/${routeId}`);
-export const getRepairSuggestions = (sourceRouteId: number, targetRouteId: number) => 
-  api.post<RepairSuggestion>('/diagnostics/repair', { source_route_id: sourceRouteId, target_route_id: targetRouteId });
+export const getRepairSuggestions = (sourceRouteId: number, targetRouteId: number, includeNegativeSamples: boolean = false) => 
+  api.post<RepairSuggestion>('/diagnostics/repair', 
+    { source_route_id: sourceRouteId, target_route_id: targetRouteId, include_negative_samples: includeNegativeSamples },
+    { timeout: 300000 } // 5分钟超时，LLM请求可能需要较长时间
+  );
 export const applyRepair = (routeId: number, utterances: string[]) => 
   api.post<{ success: boolean }>('/diagnostics/apply-repair', { route_id: routeId, utterances });
 export const syncRoutes = (routeIds: number[]) => 

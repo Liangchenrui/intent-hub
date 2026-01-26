@@ -39,6 +39,7 @@ export default {
     details: '修复',
     repairSuggestion: '修复建议',
     triggerRepairSuggestion: '获取修复建议',
+    getEnhancedSuggestions: '获取强化建议',
     visualAnalysis: '冲突分析',
     pointCloudOverlap: '意图空间分布',
     conflictComparison: '语料冲突对比',
@@ -51,10 +52,13 @@ export default {
     noData: '暂无数据，请先加载点云',
     repairTitle: '智能冲突修复 (LLM 增强)',
     conflictingUtterancesToDelete: '建议删除的冲突语句 (降低与 B 的重叠度)',
-    suggestedNewUtterancesFor: '建议为“{name}”添加以下强化语句',
+    suggestedNewUtterancesFor: '建议为"{name}"添加以下强化语句',
+    suggestedNegativeSamplesFor: '建议为"{name}"添加以下负向语料',
     applyRepair: '应用修复',
     repairApplied: '修复已应用，正在重新生成索引...',
     repairError: '获取修复建议失败',
+    repairTimeout: '请求超时，LLM处理时间较长，请稍后重试或检查后端服务状态',
+    repairLoading: '正在生成修复建议，LLM处理可能需要1-3分钟，请耐心等待...',
     applyError: '应用修复失败',
     redetect: '重新检测',
     addNegativeConfirm: '确定要将"{utterance}"添加为负例吗？\n负例用于排除不应该匹配到该路由的查询。\n注意：该语料将从正向例子中自动移除。',
@@ -195,4 +199,3 @@ export default {
     resetSuccess: '已恢复到上次保存的配置',
   },
 }
-
