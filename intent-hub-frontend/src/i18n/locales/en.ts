@@ -86,6 +86,7 @@ export default {
     title: 'Intent Hub',
     searchPlaceholder: 'Search Agent name, description or utterances...',
     reindex: 'Sync',
+    export: 'Export JSON',
     import: 'Import JSON',
     add: 'New',
     id: 'ID',

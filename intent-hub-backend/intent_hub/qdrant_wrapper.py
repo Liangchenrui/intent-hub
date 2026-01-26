@@ -116,15 +116,29 @@ class IntentHubQdrantClient:
     def _ensure_collection(self):
         """确保Collection存在，不存在则创建"""
         try:
-            if not self.client.collection_exists(self.collection_name):
+            # 增加对 collection_exists 的异常处理，确保逻辑健壮
+            try:
+                exists = self.client.collection_exists(self.collection_name)
+            except Exception as e:
+                logger.warning(f"检查Collection {self.collection_name} 是否存在时出错: {e}")
+                exists = False
+
+            if not exists:
                 logger.info(f"创建Collection: {self.collection_name}")
-                self.client.create_collection(
-                    collection_name=self.collection_name,
-                    vectors_config=VectorParams(
-                        size=self.dimensions, distance=Distance.COSINE
-                    ),
-                )
-                logger.info(f"Collection创建成功: {self.collection_name}")
+                try:
+                    self.client.create_collection(
+                        collection_name=self.collection_name,
+                        vectors_config=VectorParams(
+                            size=self.dimensions, distance=Distance.COSINE
+                        ),
+                    )
+                    logger.info(f"Collection创建成功: {self.collection_name}")
+                except Exception as e:
+                    # 再次捕获 409 Conflict 或 "already exists" 错误，防止并发导致的初始化失败
+                    if "already exists" in str(e).lower() or "409" in str(e):
+                        logger.info(f"Collection {self.collection_name} 已存在 (由其他并发进程创建)")
+                    else:
+                        raise
             else:
                 logger.info(f"Collection已存在: {self.collection_name}")
 

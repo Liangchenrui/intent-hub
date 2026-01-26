@@ -86,6 +86,7 @@ export default {
     title: 'Intent Hub',
     searchPlaceholder: '搜索 Agent 名称、描述或语料句...',
     reindex: '同步',
+    export: '导出JSON',
     import: '导入JSON',
     add: '新增',
     id: 'ID',

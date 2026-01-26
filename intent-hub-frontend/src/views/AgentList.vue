@@ -51,6 +51,13 @@
             <el-button
               type="info"
               plain
+              @click="handleExport"
+            >
+              {{ $t('agent.export') }}
+            </el-button>
+            <el-button
+              type="info"
+              plain
               @click="triggerImport"
               :loading="importing"
             >
@@ -420,6 +427,22 @@ const triggerImport = () => {
     // reset，确保选择同一个文件也能触发 change
     importFileInput.value.value = '';
     importFileInput.value.click();
+  }
+};
+
+const handleExport = () => {
+  try {
+    const data = JSON.stringify(agents.value, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'routes_config.json';
+    link.click();
+    URL.revokeObjectURL(url);
+    ElMessage.success(t('common.success'));
+  } catch (error) {
+    ElMessage.error(t('common.error'));
   }
 };
 

@@ -19,20 +19,18 @@ class Config:
     # Flask配置
     FLASK_HOST: str = os.getenv("FLASK_HOST", "0.0.0.0")
     FLASK_PORT: int = int(os.getenv("FLASK_PORT", 5000))
-    FLASK_DEBUG: bool = os.getenv("FLASK_DEBUG", "True").lower() in ("true", "1", "yes")
+    FLASK_DEBUG: bool = os.getenv("FLASK_DEBUG", "False").lower() in ("true", "1", "yes")
 
     # Qdrant配置
-    QDRANT_URL: str = os.getenv("QDRANT_URL", "http://localhost:6333")
-    QDRANT_COLLECTION: str = os.getenv("QDRANT_COLLECTION", "intent_hub_routes")
+    QDRANT_URL: str = os.getenv("QDRANT_URL")
+    QDRANT_COLLECTION: str = os.getenv("QDRANT_COLLECTION")
     QDRANT_API_KEY: Optional[str] = os.getenv("QDRANT_API_KEY")
 
     # Embedding模型配置
     HUGGINGFACE_ACCESS_TOKEN: Optional[str] = os.getenv("HUGGINGFACE_ACCESS_TOKEN")
     HUGGINGFACE_PROVIDER: Optional[str] = os.getenv("HUGGINGFACE_PROVIDER")
     HUGGINGFACE_TIMEOUT: int = int(os.getenv("HUGGINGFACE_TIMEOUT", 60))
-    EMBEDDING_MODEL_NAME: str = os.getenv(
-        "EMBEDDING_MODEL_NAME", "Qwen/Qwen3-Embedding-0.6B"
-    )
+    EMBEDDING_MODEL_NAME: str = os.getenv("EMBEDDING_MODEL_NAME")
     EMBEDDING_DEVICE: str = os.getenv("EMBEDDING_DEVICE", "cpu")
 
     # 默认路由配置
@@ -67,71 +65,24 @@ class Config:
     DEFAULT_PASSWORD: str = "123456"
 
     # LLM配置
-    LLM_PROVIDER: str = "deepseek"
-    LLM_API_KEY: Optional[str] = None
-    LLM_BASE_URL: Optional[str] = None
-    LLM_MODEL: Optional[str] = None
-    LLM_TEMPERATURE: float = 0.7
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "deepseek")
+    LLM_API_KEY: Optional[str] = os.getenv("LLM_API_KEY")
+    LLM_BASE_URL: Optional[str] = os.getenv("LLM_BASE_URL")
+    LLM_MODEL: Optional[str] = os.getenv("LLM_MODEL")
+    LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", 0.7))
 
     # DeepSeek LLM配置（向后兼容）
-    DEEPSEEK_API_KEY: Optional[str] = None
-    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
-    DEEPSEEK_MODEL: str = "deepseek-chat"
+    DEEPSEEK_API_KEY: Optional[str] = os.getenv("DEEPSEEK_API_KEY")
+    DEEPSEEK_BASE_URL: str = os.getenv("DEEPSEEK_BASE_URL")
+    DEEPSEEK_MODEL: str = os.getenv("DEEPSEEK_MODEL")
 
     # 提示词配置
-    UTTERANCE_GENERATION_PROMPT: str = """你是一个资深的用户意图分析专家。你的任务是为特定的 AI Agent 生成高质量的测试数据集（Utterances），用于后续的意图识别和路由分发系统训练。
-
-### Agent 背景信息
-- **Agent 名称**: {name}
-- **功能描述**: {description}
-- **参考示例（请参照这些示例的风格和范围，生成新的句子，但绝对不能重复这些示例）**: {reference_utterances}
-
-### 生成要求
-你需要生成 {count} 条**全新的**用户提问（必须与参考示例不同），请严格遵守以下准则：
-
-1. **分布控制**：
-   - **关键词/短语 (30%)**: 极其简短，如"查天气"、"翻译一下"、"写代码"。这类词对路由最关键。
-   - **简单指令 (40%)**: 直接的命令句，如"帮我写个请假条"、"帮我分析这行代码"。
-   - **真实口语 (30%)**: 包含语气词、不规范表达或略显随意的口语，模拟真实用户输入。
-
-2. **多样性与覆盖面**：
-   - 提取描述中的"核心动词" and "核心名词"，进行交叉组合。
-   - 包含同义词替换（例如：从"预定"扩展到"帮我订一个"、"我想约一个"）。
-   - 必须沿用参考示例的语气和专业深度，但不要重复原话。
-
-3. **路由判别性**：
-   - 生成的提问必须与该 Agent 的核心功能高度相关，避免产生可能导致路由误判到其他通用 Agent 的极其模糊的句子。
-
-4. **格式要求**：
-   - 仅输出生成的问题列表，不要包含任何解释性文字。
-
-{format_instructions}"""
-
-    AGENT_REPAIR_PROMPT: str = """你是一个 NLU 专家。
-    当前存在两个意图在语义上发生了重叠，导致模型难以区分。
-    你的任务是分析意图"{name_a}"，找出其中容易与意图"{name_b}"混淆的语句并建议删除或修改，同时提供一些更具区分性的新语句。
-
-    意图 1 (目标分析对象): {name_a}
-    描述 1: {desc_a}
-    现有例句 1: {utterances_a}
-
-    意图 2 (冲突对照对象): {name_b}
-    描述 2: {desc_b}
-
-    具体的冲突对（显示"{name_a}"中的句子与"{name_b}"中的哪些句子过于接近）: {conflicts}
-
-    请按以下 JSON 格式回复：
-    {{
-      "conflicting_utterances": ["从 '现有例句 1' 中选出最应该被删除或修改的句子"],
-      "new_utterances": ["生成 3-5 个新例句，这些句子应具有更强的 {name_a} 的特征词，且明显区别于 {name_b}"],
-      "negative_samples": ["生成 2-3 个负面约束例句，即：如果用户这么说，虽然语义接近 {name_a}，但实际不属于 {name_a}"],
-      "rationalization": "给出修改理由。注意：在理由中请直接使用意图的具体名称（即"{name_a}"和"{name_b}"），绝对禁止使用"意图A"、"意图B"、"Agent A"或"Agent B"这类代称。"
-    }}
-    不要输出任何其他文本。"""
+    UTTERANCE_GENERATION_PROMPT: str = os.getenv("UTTERANCE_GENERATION_PROMPT", "")
+    AGENT_REPAIR_PROMPT: str = os.getenv("AGENT_REPAIR_PROMPT", "")
 
     # 诊断阈值配置
-    REGION_THRESHOLD_SIGNIFICANT: float = 0.85  # 路由级冲突阈值（区域重叠：显著）
-    INSTANCE_THRESHOLD_AMBIGUOUS: float = 0.92  # 语料级冲突阈值（向量冲突：模糊歧义）
+    REGION_THRESHOLD_SIGNIFICANT: float = float(os.getenv("REGION_THRESHOLD_SIGNIFICANT", 0.0))
+    INSTANCE_THRESHOLD_AMBIGUOUS: float = float(os.getenv("INSTANCE_THRESHOLD_AMBIGUOUS", 0.0))
 
     @classmethod
     def get_settings_path(cls) -> Path:
