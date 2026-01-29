@@ -51,7 +51,7 @@ class SyncService:
         self, config_routes: list, encoder, qdrant_client, route_manager
     ) -> Dict[str, Any]:
         """全量重建模式：清空后重新创建"""
-        logger.info("执行全量重建模式")
+        logger.info("Running full reindex")
         qdrant_client.delete_all()
 
         total_points = 0
@@ -90,7 +90,7 @@ class SyncService:
                     qdrant_client.delete_route_negative_samples(route.id)
             except Exception as e:
                 logger.error(
-                    f"处理路由 {route.name} (ID: {route.id}) 时失败: {e}", exc_info=True
+                    f"Failed processing route {route.name} (ID: {route.id}): {e}", exc_info=True
                 )
                 failed_routes.append(
                     {"route_id": route.id, "route_name": route.name, "error": str(e)}
@@ -102,14 +102,14 @@ class SyncService:
 
             diag_service = DiagnosticService(self.component_manager)
             diag_service.analyze_all_overlaps(use_cache=False)
-            logger.info("全量同步后已同步完成全量诊断")
+            logger.info("Full diagnostics completed after full sync")
         except Exception as e:
-            logger.error(f"全量同步后启动全量诊断失败: {e}")
+            logger.error(f"Failed to run full diagnostics after full sync: {e}")
 
         result = {
-            "message": "全量重新索引完成"
+            "message": "Full reindex completed"
             if not failed_routes
-            else f"全量重新索引完成，但有 {len(failed_routes)} 个路由失败",
+            else f"Full reindex completed with {len(failed_routes)} route(s) failed",
             "mode": "full",
             "routes_count": len(config_routes),
             "total_points": total_points,
@@ -120,7 +120,7 @@ class SyncService:
         if failed_routes:
             result["failed_routes"] = failed_routes
             logger.warning(
-                f"全量重新索引完成，但有 {len(failed_routes)} 个路由失败: {[r['route_name'] for r in failed_routes]}"
+                f"Full reindex completed with {len(failed_routes)} route(s) failed: {[r['route_name'] for r in failed_routes]}"
             )
         return result
 
@@ -133,7 +133,7 @@ class SyncService:
         route_manager,
     ) -> Dict[str, Any]:
         """增量更新模式：只更新变化的路由"""
-        logger.info("执行增量更新模式")
+        logger.info("Running incremental reindex")
 
         # 3. 获取 Qdrant 中现有的路由 ID 和哈希
         qdrant_route_hashes = qdrant_client.get_existing_route_hashes()
@@ -143,7 +143,7 @@ class SyncService:
         routes_to_delete = existing_route_ids - config_route_ids
         deleted_count = 0
         for route_id in routes_to_delete:
-            logger.info(f"删除不再存在的路由: {route_id}")
+            logger.info(f"Deleting removed route: {route_id}")
             qdrant_client.delete_route(route_id)
             qdrant_client.delete_route_negative_samples(route_id)
             deleted_count += 1
@@ -163,10 +163,10 @@ class SyncService:
 
             if is_new_route or needs_update:
                 if is_new_route:
-                    logger.info(f"新增路由: {route.name} (ID: {route.id})")
+                    logger.info(f"New route: {route.name} (ID: {route.id})")
                     new_count += 1
                 else:
-                    logger.info(f"更新路由 (哈希变更): {route.name} (ID: {route.id})")
+                    logger.info(f"Updating route (hash changed): {route.name} (ID: {route.id})")
                     # 先删除旧的向量点（包括正例和负例）
                     qdrant_client.delete_route(route.id)
                     qdrant_client.delete_route_negative_samples(route.id)
@@ -209,7 +209,7 @@ class SyncService:
                 for rid in routes_to_delete:
                     diag_service.remove_route_from_cache(rid)
             except Exception as e:
-                logger.error(f"清理已删除路由的诊断缓存失败: {e}")
+                logger.error(f"Failed to clear diagnostic cache for deleted routes: {e}")
 
         # 增量同步后，如果有任何变化，同步启动全量诊断确保最新
         if new_count > 0 or updated_count > 0 or deleted_count > 0:
@@ -218,12 +218,12 @@ class SyncService:
 
                 diag_service = DiagnosticService(self.component_manager)
                 diag_service.analyze_all_overlaps(use_cache=False)
-                logger.info("增量同步后已同步完成全量诊断")
+                logger.info("Full diagnostics completed after incremental sync")
             except Exception as e:
-                logger.error(f"增量同步后同步启动全量诊断失败: {e}")
+                logger.error(f"Failed to run full diagnostics after incremental sync: {e}")
 
         return {
-            "message": "增量重新索引完成",
+            "message": "Incremental reindex completed",
             "mode": "incremental",
             "routes_count": len(config_routes),
             "new_routes": new_count,
@@ -257,9 +257,9 @@ class SyncService:
         # 获取路由配置
         route = route_manager.get_route(route_id)
         if not route:
-            raise ValueError(f"路由ID {route_id} 不存在")
+            raise ValueError(f"Route ID {route_id} not found")
 
-        logger.info(f"开始同步单个路由: {route.name} (ID: {route_id})")
+        logger.info(f"Syncing route: {route.name} (ID: {route_id})")
 
         # 先删除旧的向量点（包括正例和负例）
         qdrant_client.delete_route(route_id)
@@ -294,11 +294,11 @@ class SyncService:
             total_negative_points = len(negative_samples)
 
         logger.info(
-            f"成功同步路由 {route.name} (ID: {route_id})，共 {total_points} 个正例向量点，{total_negative_points} 个负例向量点"
+            f"Synced route {route.name} (ID: {route_id}): {total_points} positive, {total_negative_points} negative vectors"
         )
 
         return {
-            "message": f"路由 {route.name} 同步完成",
+            "message": f"Route {route.name} synced",
             "route_id": route_id,
             "route_name": route.name,
             "total_points": total_points,
@@ -322,10 +322,10 @@ class SyncService:
                 result = self.sync_route(route_id)
                 results.append(result)
             except Exception as e:
-                logger.error(f"同步路由 {route_id} 失败: {e}")
+                logger.error(f"Sync route {route_id} failed: {e}")
                 results.append({"route_id": route_id, "error": str(e)})
 
         return {
-            "message": f"已同步 {len([r for r in results if 'error' not in r])} 个路由",
+            "message": f"Synced {len([r for r in results if 'error' not in r])} route(s)",
             "results": results,
         }

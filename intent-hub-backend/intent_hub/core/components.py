@@ -23,21 +23,21 @@ class ComponentManager:
     def encoder(self) -> QwenEmbeddingEncoder:
         """获取编码器实例"""
         if self._encoder is None:
-            raise RuntimeError("编码器未初始化，请先调用 init_components()")
+            raise RuntimeError("Encoder not initialized, call init_components() first")
         return self._encoder
 
     @property
     def qdrant_client(self) -> IntentHubQdrantClient:
         """获取Qdrant客户端实例"""
         if self._qdrant_client is None:
-            raise RuntimeError("Qdrant客户端未初始化，请先调用 init_components()")
+            raise RuntimeError("Qdrant client not initialized, call init_components() first")
         return self._qdrant_client
 
     @property
     def route_manager(self) -> RouteManager:
         """获取路由管理器实例"""
         if self._route_manager is None:
-            raise RuntimeError("路由管理器未初始化，请先调用 init_components()")
+            raise RuntimeError("Route manager not initialized, call init_components() first")
         return self._route_manager
 
     def is_ready(self) -> bool:
@@ -63,13 +63,13 @@ class ComponentManager:
             force: 是否强制重新初始化（即使已标记为已初始化）
         """
         if self._initialized and not force:
-            logger.info("组件已初始化，跳过重复初始化")
+            logger.info("Components already initialized, skipping re-init")
             return
 
         # 尝试初始化编码器
         if self._encoder is None or force:
             try:
-                logger.info("正在初始化编码器...")
+                logger.info("Initializing encoder...")
                 self._encoder = QwenEmbeddingEncoder(
                     model_name=Config.EMBEDDING_MODEL_NAME,
                     device=Config.EMBEDDING_DEVICE,
@@ -83,17 +83,17 @@ class ComponentManager:
                 mode = (
                     "HuggingFace Inference API"
                     if self._encoder.is_remote
-                    else "本地模型"
+                    else "local model"
                 )
-                logger.info(f"编码器初始化完成，模式: {mode}")
+                logger.info(f"Encoder initialization complete, mode: {mode}")
             except Exception as e:
-                logger.error(f"编码器初始化失败: {e}")
+                logger.error(f"Encoder initialization failed: {e}")
                 self._encoder = None
 
         # 尝试初始化Qdrant客户端
         if self._qdrant_client is None or force:
             try:
-                logger.info("正在初始化Qdrant客户端...")
+                logger.info("Initializing Qdrant client...")
                 dimensions = self._encoder.dimensions if self._encoder else 1024
                 self._qdrant_client = IntentHubQdrantClient(
                     url=Config.QDRANT_URL,
@@ -101,25 +101,25 @@ class ComponentManager:
                     dimensions=dimensions,
                     api_key=Config.QDRANT_API_KEY,
                 )
-                logger.info("Qdrant客户端初始化完成")
+                logger.info("Qdrant client initialization complete")
             except Exception as e:
-                logger.error(f"Qdrant客户端初始化失败: {e}")
+                logger.error(f"Qdrant client initialization failed: {e}")
                 self._qdrant_client = None
 
         # 初始化路由管理器
         if self._route_manager is None or force:
             try:
-                logger.info("正在初始化路由管理器...")
+                logger.info("Initializing route manager...")
                 self._route_manager = RouteManager()
-                logger.info("路由管理器初始化完成")
+                logger.info("Route manager initialization complete")
             except Exception as e:
-                logger.error(f"路由管理器初始化失败: {e}")
+                logger.error(f"Route manager initialization failed: {e}")
                 self._route_manager = None
 
         # 同步路由数据到Qdrant
         if self._qdrant_client and self._encoder and self._route_manager:
             try:
-                logger.info("检查Qdrant数据同步状态...")
+                logger.info("Checking Qdrant data sync status...")
                 
                 # 检查模型是否发生变化
                 current_model = Config.EMBEDDING_MODEL_NAME
@@ -127,7 +127,7 @@ class ComponentManager:
                 
                 force_full_sync = False
                 if stored_model and stored_model != current_model:
-                    logger.warning(f"检测到 Embedding 模型变更: {stored_model} -> {current_model}，将执行全量重索引")
+                    logger.warning(f"Embedding model changed: {stored_model} -> {current_model}, performing full reindex")
                     self._qdrant_client.delete_all()
                     force_full_sync = True
                 
@@ -144,7 +144,7 @@ class ComponentManager:
                 ids_to_delete = qdrant_ids - local_ids
                 
                 if ids_to_delete:
-                    logger.info(f"检测到 Qdrant 中存在冗余路由 {ids_to_delete}，正在清理...")
+                    logger.info(f"Removing redundant routes from Qdrant: {ids_to_delete}")
                     for rid in ids_to_delete:
                         self._qdrant_client.delete_route(rid)
                 
@@ -158,7 +158,7 @@ class ComponentManager:
                         routes_to_sync.append(route)
                 
                 if routes_to_sync:
-                    logger.info(f"检测到 {len(routes_to_sync)} 个路由需要同步/更新到 Qdrant...")
+                    logger.info(f"Syncing/updating {len(routes_to_sync)} routes to Qdrant")
                     total_points = 0
                     for route in routes_to_sync:
                         # 先删除旧的向量点（防止 ID 重排导致冲突或残留）
@@ -176,23 +176,23 @@ class ComponentManager:
                             model_name=current_model
                         )
                         total_points += len(route.utterances)
-                    logger.info(f"成功同步 {len(routes_to_sync)} 个路由，共 {total_points} 个向量点")
+                    logger.info(f"Synced {len(routes_to_sync)} routes, {total_points} vectors")
                 else:
                     if not ids_to_delete:
-                        logger.info("Qdrant 数据与本地配置完全同步，跳过更新")
+                        logger.info("Qdrant in sync with local config, skipping update")
                     else:
-                        logger.info("Qdrant 数据清理完成，当前已处于同步状态")
+                        logger.info("Qdrant cleanup done, in sync")
                         
             except Exception as e:
-                logger.error(f"数据同步过程中出现错误: {e}")
+                logger.error(f"Data sync error: {e}")
 
         # 只有当所有关键组件都成功初始化后，才标记为已初始化
         if self.is_ready():
             self._initialized = True
-            logger.info("所有组件初始化成功")
+            logger.info("All components initialized successfully")
         else:
             self._initialized = False
-            logger.info("部分组件初始化失败，下次调用将重试")
+            logger.info("Some components failed to initialize, will retry on next call")
 
     def ensure_ready(self):
         """确保组件已初始化，如果未初始化则初始化"""

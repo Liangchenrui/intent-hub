@@ -43,7 +43,7 @@ class RouteManager:
         self._lock = Lock()
 
         # 记录实际使用的配置文件路径
-        logger.info(f"路由配置文件路径: {self.config_path}")
+        logger.info(f"Routes config path: {self.config_path}")
 
         # 确保配置文件目录存在
         config_dir = os.path.dirname(self.config_path)
@@ -59,26 +59,26 @@ class RouteManager:
             try:
                 with open(self.config_path, "r", encoding="utf-8") as f:
                     routes_data = json.load(f)
-                    logger.debug(f"从JSON文件解析到 {len(routes_data)} 个路由配置项")
+                    logger.debug(f"Parsed {len(routes_data)} route entries from JSON")
                     routes = [RouteConfig(**route) for route in routes_data]
                     self._routes_cache = {route.id: route for route in routes}
                 logger.info(
-                    f"从文件加载了 {len(self._routes_cache)} 个路由配置: {[r.name for r in routes]}"
+                    f"Loaded {len(self._routes_cache)} routes from file: {[r.name for r in routes]}"
                 )
             except Exception as e:
-                logger.error(f"加载路由配置文件失败: {e}", exc_info=True)
-                logger.error(f"配置文件路径: {self.config_path}")
+                logger.error(f"Failed to load routes config: {e}", exc_info=True)
+                logger.error(f"Config path: {self.config_path}")
                 self._routes_cache = {}
         else:
             logger.warning(
-                f"路由配置文件不存在，正在初始化为空配置: {self.config_path}"
+                f"Routes config file not found, initializing empty: {self.config_path}"
             )
             self._routes_cache = {}
             try:
                 # 自动创建一个空的配置文件
                 self._save_to_file()
             except Exception as e:
-                logger.error(f"初始化空路由配置文件失败: {e}")
+                logger.error(f"Failed to create empty routes config: {e}")
 
     def _save_to_file(self):
         """保存路由配置到文件"""
@@ -86,9 +86,9 @@ class RouteManager:
             routes_data = [route.dict() for route in self._routes_cache.values()]
             with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(routes_data, f, ensure_ascii=False, indent=2)
-            logger.info(f"路由配置已保存到文件: {self.config_path}")
+            logger.info(f"Routes config saved: {self.config_path}")
         except Exception as e:
-            logger.error(f"保存路由配置文件失败: {e}", exc_info=True)
+            logger.error(f"Failed to save routes config: {e}", exc_info=True)
             raise
 
     def get_route(self, route_id: int) -> Optional[RouteConfig]:
@@ -158,10 +158,10 @@ class RouteManager:
         """
         with self._lock:
             if route.id in self._routes_cache:
-                logger.warning(f"路由ID {route.id} 已存在，将更新")
+                logger.warning(f"Route ID {route.id} already exists, updating")
             self._routes_cache[route.id] = route
             self._save_to_file()
-            logger.info(f"路由配置已添加/更新: {route.name} (ID: {route.id})")
+            logger.info(f"Route added/updated: {route.name} (ID: {route.id})")
             return True
 
     def update_route(self, route_id: int, route: RouteConfig) -> bool:
@@ -176,14 +176,14 @@ class RouteManager:
         """
         with self._lock:
             if route_id not in self._routes_cache:
-                logger.warning(f"路由ID {route_id} 不存在")
+                logger.warning(f"Route ID {route_id} not found")
                 return False
 
             # 确保ID一致
             route.id = route_id
             self._routes_cache[route_id] = route
             self._save_to_file()
-            logger.info(f"路由配置已更新: {route.name} (ID: {route_id})")
+            logger.info(f"Route updated: {route.name} (ID: {route_id})")
             return True
 
     def delete_route(self, route_id: int) -> bool:
@@ -197,7 +197,7 @@ class RouteManager:
         """
         with self._lock:
             if route_id not in self._routes_cache:
-                logger.warning(f"路由ID {route_id} 不存在")
+                logger.warning(f"Route ID {route_id} not found")
                 return False
 
             route_name = self._routes_cache[route_id].name
@@ -212,7 +212,7 @@ class RouteManager:
             self._routes_cache = new_cache
 
             self._save_to_file()
-            logger.info(f"路由配置已删除: {route_name} (ID: {route_id})，已完成ID重排")
+            logger.info(f"Route deleted: {route_name} (ID: {route_id}), IDs reordered")
             return True
 
     def get_score_threshold(self, route_id: int) -> Optional[float]:
@@ -229,12 +229,12 @@ class RouteManager:
 
     def reload(self):
         """重新加载配置文件（热加载）"""
-        logger.info("执行热加载：重新加载路由配置")
+        logger.info("Hot reload: reloading routes config")
         with self._lock:
             old_count = len(self._routes_cache)
             self._load_from_file()
             new_count = len(self._routes_cache)
-            logger.info(f"热加载完成：{old_count} -> {new_count} 个路由")
+            logger.info(f"Hot reload done: {old_count} -> {new_count} routes")
 
     @staticmethod
     def compute_route_hash(route: RouteConfig) -> str:

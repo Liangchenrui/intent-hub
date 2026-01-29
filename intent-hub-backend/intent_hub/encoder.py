@@ -73,7 +73,7 @@ class QwenEmbeddingEncoder:
             如果 Token 有效返回 True，否则返回 False
         """
         if not self.huggingface_token:
-            logger.info("未配置 HuggingFace Access Token，将使用本地模型")
+            logger.info("HuggingFace Access Token not configured, using local model")
             return False
 
         try:
@@ -91,7 +91,7 @@ class QwenEmbeddingEncoder:
                 else " (official)"
             )
             logger.info(
-                f"正在验证 HuggingFace Token{provider_info}..."
+                f"Validating HuggingFace Token{provider_info}..."
             )
 
             # 第一步：快速验证 Token 是否有效 (使用 whoami，非阻塞模型加载)
@@ -111,15 +111,15 @@ class QwenEmbeddingEncoder:
             thread.join(timeout=10) # Token 验证不应超过 10 秒
 
             if thread.is_alive():
-                logger.warning("HuggingFace Token 验证超时，网络环境可能不佳")
+                logger.warning("HuggingFace Token validation timeout, network may be slow")
                 return False
 
             if not result_container["valid"]:
                 error_msg = str(result_container["error"]).lower()
                 if "401" in error_msg or "unauthorized" in error_msg:
-                    logger.warning("HuggingFace Token 无效或已过期")
+                    logger.warning("HuggingFace Token invalid or expired")
                 else:
-                    logger.warning(f"HuggingFace Token 验证异常: {result_container['error']}")
+                    logger.warning(f"HuggingFace Token validation error: {result_container['error']}")
                 return False
 
             # 第二步：初始化 Client (不立即测试推理，避免启动阻塞)
@@ -131,14 +131,14 @@ class QwenEmbeddingEncoder:
                 client_kwargs["provider"] = actual_provider
 
             self._inference_client = InferenceClient(**client_kwargs)
-            logger.info("HuggingFace Token 验证成功，将使用远程服务")
+            logger.info("HuggingFace Token validated, using remote service")
             return True
 
         except ImportError:
-            logger.warning("未安装 huggingface_hub 库，将使用本地模型")
+            logger.warning("huggingface_hub not installed, using local model")
             return False
         except Exception as e:
-            logger.warning(f"HuggingFace 验证过程出现意外错误: {e}")
+            logger.warning(f"HuggingFace validation unexpected error: {e}")
             return False
 
     def _get_local_model_path(self) -> Path:
@@ -172,16 +172,16 @@ class QwenEmbeddingEncoder:
             from huggingface_hub import snapshot_download
         except ImportError:
             raise ImportError(
-                "需要安装 huggingface_hub 库来下载模型。"
-                "请运行: pip install huggingface_hub"
+                "huggingface_hub is required to download models. "
+                "Run: pip install huggingface_hub"
             )
 
         local_path = self._get_local_model_path()
 
         try:
-            logger.info(f"正在从 HuggingFace 镜像下载模型: {self.model_name}")
-            logger.info(f"镜像地址: {self.HF_MIRROR}")
-            logger.info(f"下载到: {local_path}")
+            logger.info(f"Downloading model from HuggingFace mirror: {self.model_name}")
+            logger.info(f"Mirror: {self.HF_MIRROR}")
+            logger.info(f"Target: {local_path}")
 
             # 使用镜像站点下载模型
             snapshot_download(
@@ -201,13 +201,13 @@ class QwenEmbeddingEncoder:
                 ],
             )
 
-            logger.info(f"模型下载完成: {local_path}")
+            logger.info(f"Model download complete: {local_path}")
         except Exception as e:
             # 关键修复：
             # 不要在下载异常时 rmtree(local_path)，否则 huggingface_hub 的并发线程可能仍在
             # chmod/move *.incomplete，目录被删除会导致二次 FileNotFoundError 并进入错误循环。
             logger.error(
-                f"从镜像下载模型失败（将保留现场以便断点续传）: {e}", exc_info=True
+                f"Model download from mirror failed (state kept for resume): {e}", exc_info=True
             )
             raise
 
@@ -221,10 +221,10 @@ class QwenEmbeddingEncoder:
         """
         if self._is_local_model_exists():
             local_path = self._get_local_model_path()
-            logger.info(f"使用本地模型: {local_path}")
+            logger.info(f"Using local model: {local_path}")
             return str(local_path)
         else:
-            logger.info(f"本地模型不存在，准备从镜像下载: {self.model_name}")
+            logger.info(f"Local model not found, downloading from mirror: {self.model_name}")
             self._download_model_from_mirror()
             local_path = self._get_local_model_path()
             return str(local_path)
@@ -242,9 +242,9 @@ class QwenEmbeddingEncoder:
                 try:
                     test_embedding = self._remote_encode(["test"])
                     self._dimensions = len(test_embedding[0])
-                    logger.info(f"远程编码器初始化完成，维度: {self._dimensions}")
+                    logger.info(f"Remote encoder initialized, dimensions: {self._dimensions}")
                 except Exception as e:
-                    logger.warning(f"远程编码器获取维度失败: {e}，将回退到本地模型")
+                    logger.warning(f"Remote encoder dimension fetch failed: {e}, falling back to local model")
                     self.is_remote = False
                     self._initialize_local_model()
             return
@@ -261,7 +261,7 @@ class QwenEmbeddingEncoder:
                 try:
                     # 获取模型路径（优先使用本地，不存在则下载）
                     model_path = self._get_model_path()
-                    logger.info(f"正在加载本地编码器模型: {model_path}")
+                    logger.info(f"Loading local encoder model: {model_path}")
 
                     self._tokenizer = AutoTokenizer.from_pretrained(model_path)
                     self._model = AutoModel.from_pretrained(model_path)
@@ -272,10 +272,10 @@ class QwenEmbeddingEncoder:
                     test_embedding = self._local_encode(["test"])
                     self._dimensions = len(test_embedding[0])
                     logger.info(
-                        f"本地编码器初始化完成，设备: {self.device}，维度: {self._dimensions}"
+                        f"Local encoder initialized, device: {self.device}, dimensions: {self._dimensions}"
                     )
                 except Exception as e:
-                    logger.error(f"本地编码器初始化失败: {e}", exc_info=True)
+                    logger.error(f"Local encoder initialization failed: {e}", exc_info=True)
                     # 关键修复：不要在这里删除模型目录
                     # 失败原因可能是下载中断/网络抖动/并发竞争；删除目录会破坏断点续传并放大故障面。
                     raise
@@ -286,13 +286,13 @@ class QwenEmbeddingEncoder:
         if self._dimensions is None:
             self._initialize()
         if self._dimensions is None:
-            raise ValueError("编码器维度未初始化")
+            raise ValueError("Encoder dimensions not initialized")
         return self._dimensions
 
     def _remote_encode(self, texts: List[str]) -> List[List[float]]:
         """通过 HuggingFace Inference API 进行编码"""
         if not self._inference_client:
-            raise ValueError("HuggingFace InferenceClient 未初始化")
+            raise ValueError("HuggingFace InferenceClient not initialized")
 
         all_embeddings = []
 
@@ -317,7 +317,7 @@ class QwenEmbeddingEncoder:
                         embedding = result_array.tolist()
                     all_embeddings.append(embedding)
                 else:
-                    raise Exception("HuggingFace API 返回空结果")
+                    raise Exception("HuggingFace API returned empty result")
 
             except Exception as e:
                 error_msg = str(e).lower()
@@ -325,16 +325,16 @@ class QwenEmbeddingEncoder:
                     # 模型正在加载，等待后重试
                     import time
 
-                    logger.info("HuggingFace 模型正在加载，等待 20 秒后重试 (Inference API 可能需要几分钟来启动冷模型)...")
+                    logger.info("HuggingFace model loading, waiting 20s then retry (Inference API may need minutes for cold start)...")
                     time.sleep(20)
                     return self._remote_encode(texts)
                 else:
-                    raise Exception(f"HuggingFace Inference API 调用失败: {e}")
+                    raise Exception(f"HuggingFace Inference API call failed: {e}")
 
         return all_embeddings
 
     def _local_encode(self, texts: List[str]) -> List[List[float]]:
-        """使用本地模型进行编码"""
+        """Using local model进行编码"""
         all_embeddings = []
 
         for i in range(0, len(texts), self.batch_size):
@@ -392,7 +392,7 @@ class QwenEmbeddingEncoder:
             else:
                 return self._local_encode(texts)
         except Exception as e:
-            logger.error(f"编码失败: {e}", exc_info=True)
+            logger.error(f"Encoding failed: {e}", exc_info=True)
             raise
 
     def encode_single(self, text: str) -> List[float]:

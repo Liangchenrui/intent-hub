@@ -38,7 +38,7 @@ class PredictionService:
 
         # 1. 向量化
         query_vector = encoder.encode_single(request.text)
-        logger.debug(f"查询文本: {request.text}, 向量维度: {len(query_vector)}")
+        logger.debug(f"Query text: {request.text}, vector dim: {len(query_vector)}")
 
         # 2. 负例检查：先检查查询是否与任何负例向量过于接近
         excluded_route_ids = set()
@@ -58,7 +58,7 @@ class PredictionService:
             if score >= negative_threshold:
                 excluded_route_ids.add(route_id)
                 logger.info(
-                    f"负例排除: route_id={route_id}, "
+                    f"Negative excluded: route_id={route_id}, "
                     f"negative_score={score:.4f} >= negative_threshold={negative_threshold}, "
                     f"negative_sample={payload.get(qdrant_client.UTTERANCE_KEY)}"
                 )
@@ -66,12 +66,12 @@ class PredictionService:
         # 3. 相似度检索 (获取较多的候选结果以便过滤)
         top_k = 20
         search_results = qdrant_client.search(query_vector, top_k=top_k)
-        logger.debug(f"搜索原始结果数量: {len(search_results)}")
+        logger.debug(f"Search raw result count: {len(search_results)}")
 
         if not search_results:
             # 没有找到任何结果，返回默认路由
             logger.warning(
-                f"搜索未返回任何结果，返回默认路由。查询文本: {request.text}"
+                f"Search returned no results, using default route. Query: {request.text}"
             )
             return [
                 PredictResponse(
@@ -94,7 +94,7 @@ class PredictionService:
             # 跳过被负例排除的路由
             if route_id in excluded_route_ids:
                 logger.debug(
-                    f"跳过负例排除的路由: route_id={route_id}, score={score:.4f}"
+                    f"Skipping negative-excluded route: route_id={route_id}, score={score:.4f}"
                 )
                 continue
 
@@ -114,11 +114,11 @@ class PredictionService:
                         id=route_id, name=route_name, score=float(score)
                     )
                     logger.debug(
-                        f"命中匹配: route_id={route_id}, score={score:.4f} >= threshold={threshold}"
+                        f"Match: route_id={route_id}, score={score:.4f} >= threshold={threshold}"
                     )
             else:
                 logger.debug(
-                    f"未达阈值: route_id={route_id}, score={score:.4f} < threshold={threshold}"
+                    f"Below threshold: route_id={route_id}, score={score:.4f} < threshold={threshold}"
                 )
 
         # 5. 排序并转换结果
@@ -130,7 +130,7 @@ class PredictionService:
 
         if not sorted_results:
             # 如果没有路由满足阈值，返回默认路由
-            logger.info(f"没有路由满足阈值要求，返回默认路由。查询文本: {request.text}")
+            logger.info(f"No route above threshold, using default route. Query: {request.text}")
             return [
                 PredictResponse(
                     id=Config.DEFAULT_ROUTE_ID,
@@ -139,5 +139,5 @@ class PredictionService:
                 )
             ]
 
-        logger.info(f"最终匹配路由数量: {len(sorted_results)}")
+        logger.info(f"Matched route count: {len(sorted_results)}")
         return sorted_results

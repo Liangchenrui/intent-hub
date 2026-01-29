@@ -22,7 +22,7 @@ def login(login_req: LoginRequest):
     # 验证用户名和密码
     auth_manager = get_auth_manager()
     if not auth_manager.verify_user(login_req.username, login_req.password):
-        logger.warning(f"登录失败: 用户名或密码错误 (用户名: {login_req.username})")
+        logger.warning(f"Login failed: invalid username or password (user: {login_req.username})")
         return jsonify(
             ErrorResponse(error="认证失败", detail="用户名或密码错误").dict()
         ), 401

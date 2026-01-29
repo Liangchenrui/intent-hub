@@ -213,7 +213,7 @@ def import_routes():
                     route_service.delete_route(rid)
                     removed += 1
                 except Exception as e:
-                    logger.error(f"replace 模式删除路由失败 (route_id={rid}): {e}")
+                    logger.error(f"Failed to delete route in replace mode (route_id={rid}): {e}")
 
     return (
         jsonify(

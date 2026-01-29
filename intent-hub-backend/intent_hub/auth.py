@@ -54,7 +54,7 @@ class AuthManager:
             for key in config_keys:
                 self._key_to_user[key] = "__legacy__"
             logger.info(
-                f"从配置类加载了 {len(config_keys)} 个API keys（兼容模式，无TTL限制）"
+                f"Loaded {len(config_keys)} API keys from config (legacy mode, no TTL)"
             )
 
     def generate_key(self, username: str) -> str:
@@ -77,11 +77,11 @@ class AuthManager:
 
             # 检查key是否过期
             if time.time() - created_at < self.KEY_TTL:
-                logger.info(f"用户 {username} 使用现有API key: {key[:8]}...")
+                logger.info(f"User {username} using existing API key: {key[:8]}...")
                 return key
             else:
                 # key已过期，删除旧key
-                logger.info(f"用户 {username} 的API key已过期，生成新key")
+                logger.info(f"User {username} API key expired, generating new key")
                 old_key = key
                 if old_key in self._key_to_user:
                     del self._key_to_user[old_key]
@@ -94,7 +94,7 @@ class AuthManager:
         self._user_keys[username] = {"key": new_key, "created_at": current_time}
         self._key_to_user[new_key] = username
 
-        logger.info(f"为用户 {username} 生成新的API key: {new_key[:8]}...")
+        logger.info(f"Generated new API key for user {username}: {new_key[:8]}...")
         return new_key
 
     def add_key(self, key: str) -> bool:
@@ -104,7 +104,7 @@ class AuthManager:
         key = key.strip()
         # 添加到兼容映射中（无TTL限制）
         self._key_to_user[key] = "__legacy__"
-        logger.info(f"添加API key: {key[:8]}...（兼容模式，无TTL限制）")
+        logger.info(f"Added API key: {key[:8]}... (legacy mode, no TTL)")
         return True
 
     def remove_key(self, key: str) -> bool:
@@ -121,7 +121,7 @@ class AuthManager:
                 if self._user_keys[username].get("key") == key:
                     del self._user_keys[username]
             del self._key_to_user[key]
-            logger.info(f"移除API key: {key[:8]}...")
+            logger.info(f"Removed API key: {key[:8]}...")
             return True
         return False
 
@@ -176,10 +176,10 @@ class AuthManager:
                 del self._key_to_user[key]
             del self._user_keys[username]
             cleaned_count += 1
-            logger.info(f"清理过期API key: {key[:8]}... (用户: {username})")
+            logger.info(f"Cleaned expired API key: {key[:8]}... (user: {username})")
 
         if cleaned_count > 0:
-            logger.info(f"清理了 {cleaned_count} 个过期的API key")
+            logger.info(f"Cleaned {cleaned_count} expired API key(s)")
 
         return cleaned_count
 
@@ -270,11 +270,11 @@ def require_auth(f):
         api_key = extract_api_key()
 
         if not api_key:
-            logger.warning(f"请求缺少API key: {request.path}")
+            logger.warning(f"Request missing API key: {request.path}")
             return jsonify(
                 ErrorResponse(
-                    error="认证失败",
-                    detail="缺少API key，请在请求头中提供 Authorization: Bearer <key> 或 X-API-Key: <key>",
+                    error="Authentication failed",
+                    detail="Missing API key. Provide Authorization: Bearer <key> or X-API-Key: <key>",
                 ).dict()
             ), 401
 
@@ -285,7 +285,7 @@ def require_auth(f):
             )
             return jsonify(
                 ErrorResponse(
-                    error="认证失败", detail="无效或已过期的API key，请重新登录获取"
+                    error="Authentication failed", detail="Invalid or expired API key, please login again"
                 ).dict()
             ), 401
 
@@ -333,14 +333,14 @@ def require_telestar_auth(f):
                 return f(*args, **kwargs)
 
         # 认证失败
-        logger.warning(f"Predict认证失败: {request.path}")
+        logger.warning(f"Predict auth failed: {request.path}")
         
-        # 构造详细的错误消息
-        error_detail = "无效的授权信息。"
+        # Build error detail
+        error_detail = "Invalid authorization."
         if predict_key:
-            error_detail += f"请在请求头中提供有效的 Predict Key (配置值: {predict_key[:2]}***)"
+            error_detail += f" Provide valid Predict Key in header (config: {predict_key[:2]}***)."
         if auth_enabled:
-            error_detail += " 或有效的 API Key。"
+            error_detail += " Or valid API Key."
 
         return jsonify(
             ErrorResponse(

@@ -37,7 +37,7 @@ class RouteService:
         route_manager = self.component_manager.route_manager
 
         routes = route_manager.get_all_routes()
-        logger.info(f"获取路由列表: 共 {len(routes)} 个路由")
+        logger.info(f"Fetched {len(routes)} routes")
         logger.debug(
             f"路由详情: {[{'id': r.id, 'name': r.name, 'utterances_count': len(r.utterances)} for r in routes]}"
         )
@@ -56,8 +56,8 @@ class RouteService:
         route_manager = self.component_manager.route_manager
 
         routes = route_manager.search_routes(query)
-        logger.info(f"搜索路由 '{query}': 找到 {len(routes)} 个匹配的路由")
-        logger.debug(f"匹配的路由: {[{'id': r.id, 'name': r.name} for r in routes]}")
+        logger.info(f"Search for '{query}': {len(routes)} matches found")
+        logger.debug(f"Matched routes: {[{'id': r.id, 'name': r.name} for r in routes]}")
         return routes
 
     def create_route(self, route: RouteConfig) -> RouteConfig:
@@ -86,17 +86,17 @@ class RouteService:
 
             route.id = new_id
             logger.info(
-                f"模式：检测到前端传入ID为0，将其视为[创建]，自动分配新ID: {route.id}"
+                f"ID 0 detected, creating new route with ID: {route.id}"
             )
         else:
             if not route_manager.get_route(route.id):
                 raise ValueError(
-                    f"路由ID {route.id} 不存在，无法更新。如果想创建新路由，请将ID设为0"
+                    f"Route ID {route.id} does not exist. Set ID to 0 to create new."
                 )
-            logger.info(f"模式：更新现有路由 (ID: {route.id})")
+            logger.info(f"Updating route ID: {route.id}")
 
         route_manager.add_route(route)
-        logger.info(f"成功写入路由配置到本地文件: {route.name} (ID: {route.id})，未自动同步向量")
+        logger.info(f"Route saved: {route.name} (ID: {route.id})")
 
         return route
 
@@ -117,8 +117,8 @@ class RouteService:
         route_manager = self.component_manager.route_manager
 
         if not route_manager.update_route(route_id, route):
-            raise ValueError(f"路由ID {route_id} 不存在")
-        logger.info(f"成功写入路由配置到本地文件: {route.name} (ID: {route_id})，未自动同步向量")
+            raise ValueError(f"Route ID {route_id} does not exist")
+        logger.info(f"Route updated: {route.name} (ID: {route_id})")
 
         return route
 
@@ -136,8 +136,8 @@ class RouteService:
         route_manager = self.component_manager.route_manager
 
         if not route_manager.delete_route(route_id):
-            raise ValueError(f"路由ID {route_id} 不存在")
-        logger.info(f"成功从本地文件删除路由: ID {route_id} (已重排JSON ID)，未自动同步向量")
+            raise ValueError(f"Route ID {route_id} does not exist")
+        logger.info(f"Route deleted: ID {route_id}")
 
     def generate_utterances(self, req: GenerateUtterancesRequest) -> RouteConfig:
         """根据 Agent 信息生成提问列表（不执行持久化，由前端决定是否保存）
@@ -156,7 +156,7 @@ class RouteService:
         final_utterances = example_utterances + new_utterances
 
         logger.info(
-            f"成功为路由 ID {req.id} 生成 {len(new_utterances)} 个新提问，总计 {len(final_utterances)} 个"
+            f"Generated {len(new_utterances)} utterances for ID {req.id} (Total: {len(final_utterances)})"
         )
 
         existing_route = route_manager.get_route(req.id) if req.id != 0 else None
@@ -236,5 +236,5 @@ class RouteService:
 
             return new_utterances
         except Exception as e:
-            logger.error(f"LLM生成提问失败: {e}")
-            raise RuntimeError(f"大模型生成提问失败: {str(e)}")
+            logger.error(f"LLM generation failed: {e}")
+            raise RuntimeError(f"LLM generation failed: {str(e)}")

@@ -1,13 +1,11 @@
-"""Flask应用主文件"""
+"""Flask application entry point."""
 
 from flask import Flask
 from flask_compress import Compress
 
-# 导入API处理函数
 from intent_hub.api import (
     auth,
     diagnostics,
-    health,
     prediction,
     reindex,
     routes,
@@ -16,192 +14,181 @@ from intent_hub.api import (
 from intent_hub.auth import require_auth
 from intent_hub.config import Config
 from intent_hub.core.components import get_component_manager
+from intent_hub.utils.logger import suppress_health_check_logs
 
-# 初始化Flask应用
 app = Flask(__name__)
-# 启用响应压缩
 Compress(app)
-
-
-# 注册路由
-@app.route("/health", methods=["GET"])
-def health_check():
-    """健康检查接口（免鉴权）"""
-    return health.health_check()
 
 
 @app.route("/auth/login", methods=["POST"])
 def login():
-    """登录接口（免鉴权）"""
+    """Login (no auth required)."""
     return auth.login()
 
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    """路由预测接口（使用Telestar认证）"""
+    """Route prediction (Telestar auth)."""
     return prediction.predict()
 
 
 @app.route("/routes", methods=["GET"])
 @require_auth
 def get_routes():
-    """获取所有路由列表"""
+    """List all routes."""
     return routes.get_routes()
 
 
 @app.route("/routes/search", methods=["GET"])
 @require_auth
 def search_routes():
-    """搜索路由接口"""
+    """Search routes."""
     return routes.search_routes()
 
 
 @app.route("/routes", methods=["POST"])
 @require_auth
 def create_route():
-    """新增路由配置"""
+    """Create route."""
     return routes.create_route()
 
 
 @app.route("/routes/<int:route_id>", methods=["PUT"])
 @require_auth
 def update_route(route_id: int):
-    """修改指定路由"""
+    """Update route by ID."""
     return routes.update_route(route_id)
 
 
 @app.route("/routes/<int:route_id>", methods=["DELETE"])
 @require_auth
 def delete_route(route_id: int):
-    """删除指定路由"""
+    """Delete route by ID."""
     return routes.delete_route(route_id)
 
 
 @app.route("/routes/generate-utterances", methods=["POST"])
 @require_auth
 def generate_utterances():
-    """根据Agent信息自动生成提问"""
+    """Generate utterances from Agent info."""
     return routes.generate_utterances()
 
 
 @app.route("/routes/import", methods=["POST"])
 @require_auth
 def import_routes():
-    """从JSON导入路由配置（批量合并/覆盖）"""
+    """Import routes from JSON (merge/replace)."""
     return routes.import_routes()
 
 
 @app.route("/routes/<int:route_id>/negative-samples", methods=["POST"])
 @require_auth
 def add_negative_samples(route_id: int):
-    """为路由添加负例样本"""
+    """Add negative samples for route."""
     return routes.add_negative_samples(route_id)
 
 
 @app.route("/routes/<int:route_id>/negative-samples", methods=["DELETE"])
 @require_auth
 def delete_negative_samples(route_id: int):
-    """删除路由的所有负例样本"""
+    """Delete all negative samples for route."""
     return routes.delete_negative_samples(route_id)
 
 
 @app.route("/reindex", methods=["POST"])
 @require_auth
 def reindex_route():
-    """重新索引接口"""
+    """Reindex."""
     return reindex.reindex()
 
 
 @app.route("/reindex/sync-route", methods=["POST"])
 @require_auth
 def sync_route():
-    """同步单个或多个路由到向量数据库"""
+    """Sync one or more routes to vector DB."""
     return reindex.sync_route()
 
 
 @app.route("/diagnostics/overlap", methods=["GET"])
 @require_auth
 def analyze_all_overlaps():
-    """全局分析所有路由的重叠情况"""
+    """Analyze overlap for all routes."""
     return diagnostics.analyze_all_overlaps()
 
 
 @app.route("/diagnostics/overlap/<int:route_id>", methods=["GET"])
 @require_auth
 def analyze_overlap(route_id: int):
-    """分析指定路由与其他路由的重叠情况"""
+    """Analyze overlap for one route."""
     return diagnostics.analyze_overlap(route_id)
 
 
 @app.route("/diagnostics/umap", methods=["GET"])
 @require_auth
 def diagnostics_umap():
-    """UMAP 可视化点云数据"""
+    """UMAP point cloud data."""
     return diagnostics.umap_points()
 
 
 @app.route("/diagnostics/repair", methods=["POST"])
 @require_auth
 def get_repair_suggestions():
-    """获取 LLM 修复建议"""
+    """Get LLM repair suggestions."""
     return diagnostics.get_repair_suggestions()
 
 
 @app.route("/diagnostics/apply-repair", methods=["POST"])
 @require_auth
 def apply_repair():
-    """应用修复建议"""
+    """Apply repair suggestions."""
     return diagnostics.apply_repair()
 
 
 @app.route("/settings", methods=["GET"])
 @require_auth
 def get_settings():
-    """获取系统配置"""
+    """Get system settings."""
     return settings.get_settings()
 
 
 @app.route("/settings", methods=["POST"])
 @require_auth
 def update_settings():
-    """更新系统配置"""
+    """Update system settings."""
     return settings.update_settings()
 
 
 def init_app():
-    """初始化应用（包括组件初始化）"""
+    """Initialize app (including components)."""
     component_manager = get_component_manager()
     component_manager.init_components()
 
-    # 启动全量诊断（异步），避免阻塞启动过程
     try:
         from intent_hub.services.diagnostic_service import DiagnosticService
         from intent_hub.utils.logger import logger
         diagnostic_service = DiagnosticService(component_manager)
         diagnostic_service.run_async_diagnostics("full")
-        logger.info("系统启动：已异步启动后台全量重叠诊断")
+        logger.info("Async full diagnostics started")
     except Exception as e:
         from intent_hub.utils.logger import logger
-        logger.error(f"系统启动时启动全量诊断失败: {e}")
+        logger.error(f"Failed to start diagnostics: {e}")
 
     return app
 
 
 if __name__ == "__main__":
-    # 初始化组件
+    suppress_health_check_logs()
     component_manager = get_component_manager()
     component_manager.init_components()
 
-    # 启动全量诊断（异步）
     try:
         from intent_hub.services.diagnostic_service import DiagnosticService
         from intent_hub.utils.logger import logger
         diagnostic_service = DiagnosticService(component_manager)
         diagnostic_service.run_async_diagnostics("full")
-        logger.info("系统手动启动：已异步启动后台全量重叠诊断")
+        logger.info("Manual startup: Async full diagnostics started")
     except Exception as e:
         from intent_hub.utils.logger import logger
-        logger.error(f"系统手动启动时启动全量诊断失败: {e}")
+        logger.error(f"Manual startup: Failed to start diagnostics: {e}")
 
-    # 启动Flask应用
     app.run(host=Config.FLASK_HOST, port=Config.FLASK_PORT, debug=Config.FLASK_DEBUG)

@@ -73,7 +73,7 @@ class IntentHubQdrantClient:
                     os.environ["NO_PROXY"] = (
                         f"{no_proxy},{host_only}" if no_proxy else host_only
                     )
-                    logger.info(f"已将 {host_only} 加入 NO_PROXY")
+                    logger.info(f"Added {host_only} to NO_PROXY")
 
             # 根据配置决定使用 url 还是 host 模式
             if clean_url and (
@@ -84,12 +84,12 @@ class IntentHubQdrantClient:
                 # 智能修复：如果是 Qdrant Cloud 地址且带了 6333 端口，云端通常使用 443
                 if ".cloud.qdrant.io" in clean_url and ":6333" in clean_url:
                     logger.warning(
-                        "检测到 Qdrant Cloud 地址使用了 6333 端口，尝试自动修正为标准 HTTPS (443)..."
+                        "Qdrant Cloud with port 6333 detected. Correcting to HTTPS (443)..."
                     )
                     clean_url = clean_url.replace(":6333", "")
 
                 self.client = QdrantClient(url=clean_url, api_key=api_key, timeout=600)
-                logger.info(f"Qdrant客户端以 URL 模式初始化: {clean_url}")
+                logger.info(f"Qdrant initialized (URL mode): {clean_url}")
             else:
                 # Host 模式初始化
                 self.client = QdrantClient(
@@ -101,14 +101,14 @@ class IntentHubQdrantClient:
                     timeout=30,
                 )
                 logger.info(
-                    f"Qdrant客户端以 Host 模式初始化: {clean_url if clean_url else 'default'}"
+                    f"Qdrant initialized (Host mode): {clean_url if clean_url else 'default'}"
                 )
         except Exception as e:
             if "SSL" in str(e) or "EOF" in str(e):
                 logger.error(
-                    "Qdrant 连接发生 SSL 错误。请检查: 1. 端口是否正确(云端通常为443) 2. 环境中是否有代理(HTTP_PROXY)干扰连接。"
+                    "Qdrant SSL error. Check port (usually 443 for cloud) and proxy settings."
                 )
-            logger.error(f"Qdrant客户端初始化失败: {e}", exc_info=True)
+            logger.error(f"Qdrant initialization failed: {e}", exc_info=True)
             raise
 
         self._ensure_collection()
@@ -120,11 +120,11 @@ class IntentHubQdrantClient:
             try:
                 exists = self.client.collection_exists(self.collection_name)
             except Exception as e:
-                logger.warning(f"检查Collection {self.collection_name} 是否存在时出错: {e}")
+                logger.warning(f"Error checking collection {self.collection_name}: {e}")
                 exists = False
 
             if not exists:
-                logger.info(f"创建Collection: {self.collection_name}")
+                logger.info(f"Creating collection: {self.collection_name}")
                 try:
                     self.client.create_collection(
                         collection_name=self.collection_name,
@@ -132,15 +132,15 @@ class IntentHubQdrantClient:
                             size=self.dimensions, distance=Distance.COSINE
                         ),
                     )
-                    logger.info(f"Collection创建成功: {self.collection_name}")
+                    logger.info(f"Collection created: {self.collection_name}")
                 except Exception as e:
                     # 再次捕获 409 Conflict 或 "already exists" 错误，防止并发导致的初始化失败
                     if "already exists" in str(e).lower() or "409" in str(e):
-                        logger.info(f"Collection {self.collection_name} 已存在 (由其他并发进程创建)")
+                        logger.info(f"Collection {self.collection_name} already exists")
                     else:
                         raise
             else:
-                logger.info(f"Collection已存在: {self.collection_name}")
+                logger.info(f"Collection exists: {self.collection_name}")
 
             # 确保关键字段有索引 (针对 Qdrant Cloud 的性能或强制要求)
             try:
@@ -149,14 +149,14 @@ class IntentHubQdrantClient:
                     field_name=self.ROUTE_ID_KEY,
                     field_schema=PayloadSchemaType.INTEGER,
                 )
-                logger.info(f"已确保字段 {self.ROUTE_ID_KEY} 的索引存在")
+                logger.info(f"Index for {self.ROUTE_ID_KEY} ensured")
             except Exception as e:
                 # 如果索引已存在，忽略错误
                 if (
                     "already exists" not in str(e).lower()
                     and "duplicate" not in str(e).lower()
                 ):
-                    logger.warning(f"创建 {self.ROUTE_ID_KEY} 索引时出现警告: {e}")
+                    logger.warning(f"Warning creating index for {self.ROUTE_ID_KEY}: {e}")
 
             # 为 is_negative 字段创建索引（用于负例向量过滤）
             try:
@@ -165,17 +165,17 @@ class IntentHubQdrantClient:
                     field_name=self.IS_NEGATIVE_KEY,
                     field_schema=PayloadSchemaType.BOOL,
                 )
-                logger.info(f"已确保字段 {self.IS_NEGATIVE_KEY} 的索引存在")
+                logger.info(f"Index for {self.IS_NEGATIVE_KEY} ensured")
             except Exception as e:
                 # 如果索引已存在，忽略错误
                 if (
                     "already exists" not in str(e).lower()
                     and "duplicate" not in str(e).lower()
                 ):
-                    logger.warning(f"创建 {self.IS_NEGATIVE_KEY} 索引时出现警告: {e}")
+                    logger.warning(f"Warning creating index for {self.IS_NEGATIVE_KEY}: {e}")
 
         except Exception as e:
-            logger.error(f"Collection初始化失败: {e}", exc_info=True)
+            logger.error(f"Collection initialization failed: {e}", exc_info=True)
             raise
 
     def upsert_route_utterances(
@@ -224,9 +224,9 @@ class IntentHubQdrantClient:
 
         try:
             self.client.upsert(collection_name=self.collection_name, points=points)
-            logger.info(f"成功更新路由 {route_name} 的 {len(points)} 个向量点")
+            logger.info(f"Updated route {route_name}: {len(points)} vectors")
         except Exception as e:
-            logger.error(f"更新向量点失败: {e}", exc_info=True)
+            logger.error(f"Failed to update vector points: {e}", exc_info=True)
             raise
 
     def delete_route(self, route_id: int):
@@ -249,9 +249,9 @@ class IntentHubQdrantClient:
                     ]
                 ),
             )
-            logger.info(f"成功删除路由ID {route_id} 的所有向量点")
+            logger.info(f"Deleted points for route ID {route_id}")
         except Exception as e:
-            logger.error(f"删除路由向量点失败: {e}", exc_info=True)
+            logger.error(f"Failed to delete points: {e}", exc_info=True)
             raise
 
     def get_route_vectors(self, route_id: int) -> List[Dict[str, Any]]:
@@ -306,7 +306,7 @@ class IntentHubQdrantClient:
 
             return results
         except Exception as e:
-            logger.error(f"获取路由 {route_id} 的向量失败: {e}", exc_info=True)
+            logger.error(f"Failed to get vectors for route {route_id}: {e}", exc_info=True)
             raise
 
     def search(self, query_vector: List[float], top_k: int = 1) -> List[Dict[str, Any]]:
@@ -345,7 +345,7 @@ class IntentHubQdrantClient:
 
             return search_results
         except Exception as e:
-            logger.error(f"向量搜索失败: {e}", exc_info=True)
+            logger.error(f"Vector search failed: {e}", exc_info=True)
             raise
 
     def delete_all(self):
@@ -353,9 +353,9 @@ class IntentHubQdrantClient:
         try:
             self.client.delete_collection(self.collection_name)
             self._ensure_collection()
-            logger.info(f"成功清空Collection: {self.collection_name}")
+            logger.info(f"Collection cleared: {self.collection_name}")
         except Exception as e:
-            logger.error(f"清空Collection失败: {e}", exc_info=True)
+            logger.error(f"Failed to clear collection: {e}", exc_info=True)
             raise
 
     def is_ready(self) -> bool:
@@ -371,7 +371,7 @@ class IntentHubQdrantClient:
             info = self.client.get_collection(self.collection_name)
             return info.points_count > 0
         except Exception as e:
-            logger.error(f"检查Collection数据失败: {e}", exc_info=True)
+            logger.error(f"Failed to check collection data: {e}", exc_info=True)
             return False
 
     def get_existing_route_ids(self) -> set[int]:
@@ -415,7 +415,7 @@ class IntentHubQdrantClient:
             )
             return route_ids
         except Exception as e:
-            logger.error(f"获取现有路由ID失败: {e}", exc_info=True)
+            logger.error(f"Failed to fetch existing route IDs: {e}", exc_info=True)
             raise
 
     def get_existing_route_hashes(self) -> Dict[int, str]:
@@ -456,7 +456,7 @@ class IntentHubQdrantClient:
 
             return route_hashes
         except Exception as e:
-            logger.error(f"获取现有路由哈希失败: {e}", exc_info=True)
+            logger.error(f"Failed to fetch existing route hashes: {e}", exc_info=True)
             return {}
 
     def get_collection_model_name(self) -> Optional[str]:
@@ -539,7 +539,7 @@ class IntentHubQdrantClient:
 
             return results
         except Exception as e:
-            logger.error(f"遍历所有向量点失败: {e}", exc_info=True)
+            logger.error(f"Failed to scroll all points: {e}", exc_info=True)
             raise
 
     def upsert_route_negative_samples(
@@ -584,9 +584,9 @@ class IntentHubQdrantClient:
 
         try:
             self.client.upsert(collection_name=self.collection_name, points=points)
-            logger.info(f"成功更新路由 {route_name} 的 {len(points)} 个负例向量点")
+            logger.info(f"Updated route {route_name}: {len(points)} negative vectors")
         except Exception as e:
-            logger.error(f"更新负例向量点失败: {e}", exc_info=True)
+            logger.error(f"Failed to update negative points: {e}", exc_info=True)
             raise
 
     def search_negative_samples(
@@ -637,7 +637,7 @@ class IntentHubQdrantClient:
 
             return search_results
         except Exception as e:
-            logger.error(f"负例向量搜索失败: {e}", exc_info=True)
+            logger.error(f"Negative vector search failed: {e}", exc_info=True)
             raise
 
     def delete_route_negative_samples(self, route_id: int):
@@ -662,7 +662,7 @@ class IntentHubQdrantClient:
                     ]
                 ),
             )
-            logger.info(f"成功删除路由ID {route_id} 的所有负例向量点")
+            logger.info(f"Deleted all negative points for route ID {route_id}")
         except Exception as e:
-            logger.error(f"删除负例向量点失败: {e}", exc_info=True)
+            logger.error(f"Failed to delete negative points: {e}", exc_info=True)
             raise

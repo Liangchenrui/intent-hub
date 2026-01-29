@@ -11,7 +11,7 @@ try:
     from langchain_google_genai import ChatGoogleGenerativeAI
 except ImportError:
     ChatGoogleGenerativeAI = None
-    logger.warning("langchain-google-genai未安装，Gemini支持不可用")
+    logger.warning("langchain-google-genai not installed, Gemini support unavailable")
 
 from intent_hub.config import Config
 
@@ -56,7 +56,7 @@ class LLMFactory:
                 f"不支持的LLM提供商: {provider}。支持的提供商: {', '.join(LLMFactory.SUPPORTED_PROVIDERS)}"
             )
 
-        logger.info(f"创建LLM实例: provider={provider}, model={model}")
+        logger.info(f"Creating LLM instance: provider={provider}, model={model}")
 
         if provider == "gemini":
             return LLMFactory._create_gemini(api_key, model, temperature)

@@ -53,7 +53,7 @@ class DiagnosticService:
                 with open(self.cache_path, "r", encoding="utf-8") as f:
                     return json.load(f)
             except Exception as e:
-                logger.error(f"加载诊断缓存失败: {e}")
+                logger.error(f"Failed to load diagnostic cache: {e}")
         return {}
 
     def _save_cache(self, cache_data: Dict[str, Any]):
@@ -62,7 +62,7 @@ class DiagnosticService:
             with open(self.cache_path, "w", encoding="utf-8") as f:
                 json.dump(cache_data, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            logger.error(f"保存诊断缓存失败: {e}")
+            logger.error(f"Failed to save diagnostic cache: {e}")
 
     def _cosine_similarity(self, v1: np.ndarray, v2: np.ndarray) -> float:
         """计算余弦相似度"""
@@ -188,7 +188,7 @@ class DiagnosticService:
         if use_cache:
             cache = self._load_cache()
             if cache:
-                logger.info("从缓存中读取诊断结果")
+                logger.info("Reading diagnostic result from cache")
                 results = []
                 for r_id_str, r_data in cache.items():
                     res = DiagnosticResult(**r_data)
@@ -227,7 +227,7 @@ class DiagnosticService:
 
     def update_route_diagnostics(self, route_id: int):
         """增量更新指定路由的诊断信息"""
-        logger.info(f"增量更新路由 ID {route_id} 的诊断信息")
+        logger.info(f"Incremental update diagnostics for route ID {route_id}")
         cache = self._load_cache()
 
         # 1. 计算当前路由的最新诊断结果
@@ -339,16 +339,16 @@ class DiagnosticService:
                     self.update_route_diagnostics(route_id)
                 elif mode == "full":
                     self.analyze_all_overlaps(use_cache=False)
-                logger.info(f"异步诊断任务完成: mode={mode}, route_id={route_id}")
+                logger.info(f"Async diagnostics completed: mode={mode}, route_id={route_id}")
             except Exception as e:
-                logger.error(f"异步诊断任务失败: {e}")
+                logger.error(f"Async diagnostics failed: {e}")
 
         thread = threading.Thread(target=_task)
         thread.start()
 
     def remove_route_from_cache(self, route_id: int):
         """从诊断缓存中移除指定路由"""
-        logger.info(f"从诊断缓存中移除路由 ID {route_id}")
+        logger.info(f"Removed route ID {route_id} from diagnostic cache")
         cache = self._load_cache()
 
         # 1. 移除该路由自身的记录
@@ -513,7 +513,7 @@ class DiagnosticService:
                 rationalization=result.get("rationalization", ""),
             )
         except Exception as e:
-            logger.error(f"LLM 生成修复建议失败: {str(e)}")
+            logger.error(f"LLM repair suggestion failed: {str(e)}")
             raise RuntimeError(f"修复建议生成失败: {str(e)}")
 
     def apply_repair(self, route_id: int, utterances: List[str]) -> bool:
