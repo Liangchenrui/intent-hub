@@ -93,12 +93,13 @@
                 <div class="score-label">{{ $t('test.confidenceScore') }}</div>
                 <div class="score-bar-container">
                   <el-progress 
-                    :percentage="Math.round((result.score || 0) * 100)" 
+                    :percentage="Math.min(Math.round((result.score || 0) * 100), 100)" 
                     :status="(result.score || 0) > 0.7 ? 'success' : ((result.score || 0) > 0.4 ? 'warning' : 'exception')"
-                    :stroke-width="12"
-                    :text-inside="true"
+                    :stroke-width="14"
+                    :show-text="false"
                   />
                 </div>
+                <div class="score-number">{{ (result.score || 0).toFixed(4) }}</div>
               </div>
             </el-card>
           </div>
@@ -330,6 +331,16 @@ const handleTest = async () => {
 
 .score-bar-container {
   flex: 1;
+  min-width: 0; /* 防止溢出 */
+}
+
+.score-number {
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 600;
+  color: #606266;
+  min-width: 60px;
+  text-align: right;
+  font-size: 14px;
 }
 
 .empty-results {
