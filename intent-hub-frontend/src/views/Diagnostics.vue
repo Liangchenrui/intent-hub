@@ -38,7 +38,7 @@
             <el-button 
               type="primary" 
               :icon="Search" 
-              @click="runDiagnostics(true)" 
+              @click="handleStartScan" 
               :loading="loading || fullPageLoading"
             >
               {{ $t('diagnostics.refresh') }}
@@ -1209,6 +1209,21 @@ const applyRepairAction = async () => {
     ElMessage.error(t('diagnostics.applyError') || 'Failed to apply repair');
   } finally {
     applyingRepair.value = false;
+  }
+};
+
+/** 开始扫描：先全量同步向量库，再执行诊断（修改路由后点一次即可看到最新诊断） */
+const handleStartScan = async () => {
+  fullPageLoading.value = true;
+  loading.value = true;
+  try {
+    await reindex(true); // 全量同步向量库
+    await runDiagnostics(true); // 再执行诊断并刷新结果
+  } catch (error) {
+    ElMessage.error(t('agent.fetchError'));
+  } finally {
+    loading.value = false;
+    fullPageLoading.value = false;
   }
 };
 
