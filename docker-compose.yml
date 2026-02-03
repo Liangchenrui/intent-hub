@@ -10,8 +10,8 @@ services:
     image: ${IMAGE_PREFIX}intent-hub-backend:latest
     volumes:
       - ./data:/app/data
-      # 与后端 Dockerfile 中 HF_HOME=/tmp/hf_cache 对齐，确保 HuggingFace 缓存可持久化
-      - model_cache:/tmp/hf_cache
+      # 与后端 Dockerfile 中 HF_HOME=/app/.cache/huggingface 对齐，entrypoint 会修正挂载卷权限
+      - model_cache:/app/.cache/huggingface
     env_file:
       - .env
     ports:

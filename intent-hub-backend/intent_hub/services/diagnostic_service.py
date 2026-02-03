@@ -28,16 +28,36 @@ class DiagnosticService:
     @property
     def REGION_THRESHOLD_SIGNIFICANT(self) -> float:
         """区域重叠：显著（路由级冲突阈值）"""
-        return getattr(Config, 'REGION_THRESHOLD_SIGNIFICANT', 0.85)
-    
+        return getattr(Config, "REGION_THRESHOLD_SIGNIFICANT", 0.85)
+
     REGION_THRESHOLD_SEVERE = 0.95  # 区域重叠：严重（保留用于未来扩展）
-    
+
     @property
     def INSTANCE_THRESHOLD_AMBIGUOUS(self) -> float:
         """向量冲突：模糊歧义（语料级冲突阈值）"""
-        return getattr(Config, 'INSTANCE_THRESHOLD_AMBIGUOUS', 0.92)
-    
+        return getattr(Config, "INSTANCE_THRESHOLD_AMBIGUOUS", 0.92)
+
     INSTANCE_THRESHOLD_HARD = 0.98  # 向量冲突：硬冲突（保留用于未来扩展）
+
+    # 当 AGENT_REPAIR_PROMPT 为空时使用的默认提示词，必须要求 LLM 只输出 JSON
+    DEFAULT_REPAIR_PROMPT = """你是一个意图路由修复助手。给定两个发生冲突的路由及其冲突示例，请为路由A生成修复建议。
+
+## 输入信息
+- 路由A名称: {name_a}
+- 路由A描述: {desc_a}
+- 路由A示例话术: {utterances_a}
+- 路由B名称: {name_b}
+- 路由B描述: {desc_b}
+- 冲突示例: {conflicts}
+
+## 输出要求
+你必须且仅输出一个合法的 JSON 对象，不要输出任何解释、前缀或后缀文字。JSON 必须包含且仅包含以下四个键：
+- new_utterances: 字符串数组，建议为路由A新增的、能强化与路由B区分度的话术
+- negative_samples: 字符串数组，建议的负面约束话术（用户说这些时不应匹配路由A）
+- conflicting_utterances: 字符串数组，建议从路由A中删除的、与路由B冲突的话术
+- rationalization: 字符串，简要说明修改理由（一句话）
+
+直接输出 JSON，不要用 markdown 代码块包裹。"""
 
     def __init__(self, component_manager: ComponentManager):
         self.component_manager = component_manager
@@ -72,7 +92,9 @@ class DiagnosticService:
             return 0.0
         return float(np.dot(v1, v2) / (norm1 * norm2))
 
-    def analyze_route_overlap(self, route_id: int, max_conflicts: Optional[int] = None) -> DiagnosticResult:
+    def analyze_route_overlap(
+        self, route_id: int, max_conflicts: Optional[int] = None
+    ) -> DiagnosticResult:
         """分析指定路由与其他所有路由的语义重叠情况"""
         self.component_manager.ensure_ready()
         qdrant_client = self.component_manager.qdrant_client
@@ -91,9 +113,12 @@ class DiagnosticService:
             )
 
         # 排除负例语料：如果一个语料在 negative_samples 中，即使它在 utterances 中，也要排除
-        current_negative_samples = set(getattr(current_route, 'negative_samples', []) or [])
+        current_negative_samples = set(
+            getattr(current_route, "negative_samples", []) or []
+        )
         current_points_filtered = [
-            p for p in current_points 
+            p
+            for p in current_points
             if p["payload"].get("utterance", "") not in current_negative_samples
         ]
 
@@ -119,9 +144,12 @@ class DiagnosticService:
                 continue
 
             # 排除对方路由的负例语料
-            other_negative_samples = set(getattr(other_route, 'negative_samples', []) or [])
+            other_negative_samples = set(
+                getattr(other_route, "negative_samples", []) or []
+            )
             other_points_filtered = [
-                p for p in other_points 
+                p
+                for p in other_points
                 if p["payload"].get("utterance", "") not in other_negative_samples
             ]
 
@@ -153,13 +181,13 @@ class DiagnosticService:
                                 similarity=sim,
                             )
                         )
-            
+
             # 按相似度降序排序
             instance_conflicts.sort(key=lambda x: x.similarity, reverse=True)
-            
+
             # 记录冲突总数
             total_conflicts = len(instance_conflicts)
-            
+
             # 如果指定了限制，则截断
             if max_conflicts is not None:
                 instance_conflicts = instance_conflicts[:max_conflicts]
@@ -183,7 +211,9 @@ class DiagnosticService:
             route_id=route_id, route_name=current_route.name, overlaps=overlaps
         )
 
-    def analyze_all_overlaps(self, use_cache: bool = True, max_conflicts_per_pair: Optional[int] = None) -> List[DiagnosticResult]:
+    def analyze_all_overlaps(
+        self, use_cache: bool = True, max_conflicts_per_pair: Optional[int] = None
+    ) -> List[DiagnosticResult]:
         """对所有路由进行全局重叠检测"""
         if use_cache:
             cache = self._load_cache()
@@ -196,8 +226,12 @@ class DiagnosticService:
                         # 在此处也应用 max_conflicts_per_pair 限制
                         if max_conflicts_per_pair is not None:
                             for overlap in res.overlaps:
-                                overlap.total_conflicts = len(overlap.instance_conflicts)
-                                overlap.instance_conflicts = overlap.instance_conflicts[:max_conflicts_per_pair]
+                                overlap.total_conflicts = len(
+                                    overlap.instance_conflicts
+                                )
+                                overlap.instance_conflicts = overlap.instance_conflicts[
+                                    :max_conflicts_per_pair
+                                ]
                         results.append(res)
                 return results
 
@@ -211,13 +245,15 @@ class DiagnosticService:
             # 计算时不应用限制，以便完整缓存
             result = self.analyze_route_overlap(route.id)
             cache_to_save[str(route.id)] = result.dict()
-            
+
             # 返回结果时应用限制
             if max_conflicts_per_pair is not None:
                 for overlap in result.overlaps:
                     overlap.total_conflicts = len(overlap.instance_conflicts)
-                    overlap.instance_conflicts = overlap.instance_conflicts[:max_conflicts_per_pair]
-            
+                    overlap.instance_conflicts = overlap.instance_conflicts[
+                        :max_conflicts_per_pair
+                    ]
+
             if result.overlaps:
                 results.append(result)
 
@@ -243,14 +279,21 @@ class DiagnosticService:
         if current_points:
             # 排除负例语料
             current_route = route_manager.get_route(route_id)
-            current_negative_samples = set(getattr(current_route, 'negative_samples', []) or []) if current_route else set()
+            current_negative_samples = (
+                set(getattr(current_route, "negative_samples", []) or [])
+                if current_route
+                else set()
+            )
             current_points_filtered = [
-                p for p in current_points 
+                p
+                for p in current_points
                 if p["payload"].get("utterance", "") not in current_negative_samples
             ]
-            
+
             if current_points_filtered:
-                current_vectors = [np.array(p["vector"]) for p in current_points_filtered]
+                current_vectors = [
+                    np.array(p["vector"]) for p in current_points_filtered
+                ]
                 centroid_current = np.mean(current_vectors, axis=0)
             else:
                 centroid_current = None
@@ -267,9 +310,14 @@ class DiagnosticService:
 
                 # 排除对方路由的负例语料
                 other_route = route_manager.get_route(other_id)
-                other_negative_samples = set(getattr(other_route, 'negative_samples', []) or []) if other_route else set()
+                other_negative_samples = (
+                    set(getattr(other_route, "negative_samples", []) or [])
+                    if other_route
+                    else set()
+                )
                 other_points_filtered = [
-                    p for p in other_points 
+                    p
+                    for p in other_points
                     if p["payload"].get("utterance", "") not in other_negative_samples
                 ]
 
@@ -339,7 +387,9 @@ class DiagnosticService:
                     self.update_route_diagnostics(route_id)
                 elif mode == "full":
                     self.analyze_all_overlaps(use_cache=False)
-                logger.info(f"Async diagnostics completed: mode={mode}, route_id={route_id}")
+                logger.info(
+                    f"Async diagnostics completed: mode={mode}, route_id={route_id}"
+                )
             except Exception as e:
                 logger.error(f"Async diagnostics failed: {e}")
 
@@ -377,7 +427,9 @@ class DiagnosticService:
             raise RuntimeError("未安装 umap-learn，无法进行 UMAP 降维")
 
         # 排除负例向量，只获取正例向量用于诊断和可视化
-        all_points = qdrant_client.scroll_all_points(with_vectors=True, exclude_negative=True)
+        all_points = qdrant_client.scroll_all_points(
+            with_vectors=True, exclude_negative=True
+        )
         if not all_points:
             return {
                 "points": [],
@@ -481,14 +533,10 @@ class DiagnosticService:
 
         from intent_hub.config import Config
 
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                (
-                    "system",
-                    Config.AGENT_REPAIR_PROMPT,
-                ),
-            ]
-        )
+        prompt_text = (Config.AGENT_REPAIR_PROMPT or "").strip()
+        if not prompt_text:
+            prompt_text = self.DEFAULT_REPAIR_PROMPT
+        prompt = ChatPromptTemplate.from_messages([("system", prompt_text)])
 
         chain = prompt | llm | JsonOutputParser()
 

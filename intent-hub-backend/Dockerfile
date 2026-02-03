@@ -30,7 +30,11 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:${PATH}" \
-    HF_HOME="/tmp/hf_cache"
+    HF_HOME="/app/.cache/huggingface"
+
+# 安装 gosu，供 entrypoint 切换用户
+RUN apt-get update && apt-get install -y --no-install-recommends gosu && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app
@@ -40,11 +44,13 @@ COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
 
 COPY --chown=appuser:appuser . .
 
-RUN mkdir -p /app/intent_hub/models && \
-    chown -R appuser:appuser /app/intent_hub/models
+RUN mkdir -p /app/intent_hub/models /app/.cache/huggingface && \
+    chown -R appuser:appuser /app/intent_hub/models /app/.cache/huggingface
 
-USER appuser
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 5000
 
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["python", "run.py"]
