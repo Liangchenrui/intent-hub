@@ -3,10 +3,14 @@ ARG NGINX_BASE=nginx:alpine
 
 FROM ${BASE_IMAGE} AS builder
 
+ARG NPM_REGISTRY
+
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
+RUN --mount=type=cache,target=/root/.npm \
+    if [ -n "$NPM_REGISTRY" ]; then npm config set registry $NPM_REGISTRY; fi && \
+    npm install
 
 COPY . .
 RUN npm run build

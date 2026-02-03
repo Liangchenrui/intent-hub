@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
       args:
         - BASE_IMAGE=${PYTHON_BASE}
+        - PIP_INDEX_URL=${PIP_INDEX_URL}
     container_name: intent-hub-backend
     image: ${IMAGE_PREFIX}intent-hub-backend:latest
     volumes:
@@ -27,6 +28,7 @@ services:
       args:
         - BASE_IMAGE=${NODE_BASE}
         - NGINX_BASE=${NGINX_BASE}
+        - NPM_REGISTRY=${NPM_REGISTRY}
     container_name: intent-hub-frontend
     image: ${IMAGE_PREFIX}intent-hub-frontend:latest
     ports:

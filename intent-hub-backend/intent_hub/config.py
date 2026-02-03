@@ -114,7 +114,7 @@ class Config:
                     else:
                         setattr(cls, key, env_val)
                 except Exception as e:
-                    print(f"转换环境变量 {key}={env_val} 失败: {e}")
+                    logger.error(f"转换环境变量 {key}={env_val} 失败: {e}")
 
         # 2. 从 settings.json 加载 (最高优先级，覆盖环境变量)
         path = cls.get_settings_path()
@@ -129,7 +129,7 @@ class Config:
                         if hasattr(cls, key) and not key.startswith("_"):
                             setattr(cls, key, value)
             except Exception as e:
-                print(f"加载配置文件失败: {e}")
+                logger.error(f"加载配置文件失败: {e}")
 
         # 处理向后兼容
         cls._apply_backward_compatibility()
@@ -193,7 +193,7 @@ class Config:
             cls._apply_backward_compatibility()
 
         except Exception as e:
-            print(f"保存配置文件失败: {e}")
+            logger.error(f"保存配置文件失败: {e}")
             raise e
 
         return collection_changed

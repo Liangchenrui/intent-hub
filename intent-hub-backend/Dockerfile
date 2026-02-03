@@ -1,18 +1,27 @@
-ARG BASE_IMAGE=python:3.11-slim
+ARG BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/ghcr.io/astral-sh/uv:python3.11-bookworm-slim
 FROM ${BASE_IMAGE} AS builder
+
+ARG PIP_INDEX_URL
 
 WORKDIR /build
 
-ENV PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PYTHONDONTWRITEBYTECODE=1
+ENV UV_HTTP_TIMEOUT=600 \
+    UV_LINK_MODE=copy \
+    UV_CONCURRENT_DOWNLOADS=1
+
+# 创建虚拟环境
+RUN uv venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 COPY requirements.txt .
 
-RUN pip install --user --no-cache-dir \
-    -i https://pypi.tuna.tsinghua.edu.cn/simple \
-    --trusted-host pypi.tuna.tsinghua.edu.cn \
-    -r requirements.txt
+# 使用 uv 加速安装
+RUN --mount=type=cache,target=/root/.cache/uv \
+    if [ -n "$PIP_INDEX_URL" ]; then \
+    uv pip install --index-strategy unsafe-best-match -i $PIP_INDEX_URL --extra-index-url https://mirrors.aliyun.com/pytorch-wheels/cpu -r requirements.txt; \
+    else \
+    uv pip install --index-strategy unsafe-best-match --extra-index-url https://mirrors.aliyun.com/pytorch-wheels/cpu -r requirements.txt; \
+    fi
 
 FROM ${BASE_IMAGE}
 
@@ -20,13 +29,14 @@ WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PATH="/home/appuser/.local/bin:${PATH}" \
+    PATH="/opt/venv/bin:${PATH}" \
     HF_HOME="/tmp/hf_cache"
 
 RUN useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app
 
-COPY --from=builder --chown=appuser:appuser /root/.local /home/appuser/.local
+# 复制虚拟环境
+COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
 
 COPY --chown=appuser:appuser . .
 

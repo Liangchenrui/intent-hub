@@ -254,7 +254,6 @@ const fetchSettings = async (showResetMessage = false) => {
     const response = await getSettings();
     // 只提取我们关心的字段，忽略后端返回的其他字段
     const data = response.data as any;
-    // console.log(data);
     settings.value = {
       QDRANT_URL: data.QDRANT_URL || '',
       QDRANT_COLLECTION: data.QDRANT_COLLECTION || '',
