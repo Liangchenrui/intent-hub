@@ -41,7 +41,7 @@ const handleCommand = (command: string) => {
   // 注意：Element Plus 的语言需要全局更新，这里我们通过事件通知 main.ts
   window.dispatchEvent(new CustomEvent('locale-change', { detail: { locale: elementLocale } }));
   
-  ElMessage.success(command === 'zh' ? '已切换到中文' : 'Switched to English');
+  ElMessage.success(command === 'zh' ? t('common.switchedToChinese') : t('common.switchedToEnglish'));
 };
 </script>
 

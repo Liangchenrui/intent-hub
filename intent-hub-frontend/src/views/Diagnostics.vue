@@ -51,7 +51,7 @@
             <div class="search-box">
               <el-input
                 v-model="mapSearchQuery"
-                placeholder="搜索语料定位..."
+                placeholder=""
                 class="search-input"
                 clearable
                 @input="handleMapSearch"
@@ -143,7 +143,7 @@
                     <div v-if="row.total_conflicts > row.instance_conflicts.length" class="more-conflicts-tip">
                       <el-link type="info" :underline="false" @click="handleStartRepair(result, row)">
                         <el-icon><InfoFilled /></el-icon>
-                        还有 {{ row.total_conflicts - row.instance_conflicts.length }} 个冲突对... 点击查看详情
+                        {{ $t('diagnostics.moreConflicts', { count: row.total_conflicts - row.instance_conflicts.length }) }}
                       </el-link>
                     </div>
                     <div v-if="row.instance_conflicts.length === 0" class="no-instance-conflict">
@@ -353,7 +353,7 @@
                 {{ $t('diagnostics.getEnhancedSuggestions') }}
               </el-button>
             </h4>
-            <div v-loading="repairLoading" :element-loading-text="repairLoading ? (t('diagnostics.repairLoading') || '正在生成修复建议，LLM处理可能需要1-3分钟，请耐心等待...') : ''" class="suggestion-content">
+            <div v-loading="repairLoading" :element-loading-text="repairLoading ? t('diagnostics.repairLoading') : ''" class="suggestion-content">
               <div v-if="suggestion" class="suggestion-box">
                 <div class="rationalization-card">
                   <el-icon><InfoFilled /></el-icon>
@@ -362,7 +362,10 @@
                 
                   <div class="suggestion-lists" v-if="suggestion">
                     <div class="s-list" v-if="suggestion.conflicting_utterances.length">
-                      <span class="s-label">{{ $t('diagnostics.conflictingUtterancesToDelete') }}</span>
+                      <span class="s-label">
+                        {{ $t('diagnostics.conflictingUtterancesToDelete') }}
+                        <el-tag size="small" type="danger" effect="plain" round>{{ suggestion.conflicting_utterances.length }}</el-tag>
+                      </span>
                       <div class="suggestion-card-list">
                         <div 
                           v-for="(u, idx) in suggestion.conflicting_utterances" 
@@ -402,7 +405,7 @@
                     </div>
                     
                     <div class="s-list" v-if="suggestion.negative_samples.length">
-                      <span class="s-label">{{ $t('diagnostics.suggestedNegativeSamplesFor', { name: currentSourceRoute?.route_name }) || `推荐的新负向语料（用于 "${currentSourceRoute?.route_name}"）` }}</span>
+                      <span class="s-label">{{ $t('diagnostics.suggestedNegativeSamplesFor', { name: currentSourceRoute?.route_name }) }}</span>
                       <div class="suggestion-card-list">
                         <div 
                           v-for="(_, idx) in suggestion.negative_samples" 
@@ -511,7 +514,7 @@
                   v-model="mergeForm.utterancesText" 
                   type="textarea" 
                   :rows="8"
-                  :placeholder="`从两个路由合并的语料，每行一条\n当前共 ${mergeForm.utterances.length} 条`"
+                  :placeholder="$t('diagnostics.mergedUtterancesPlaceholder', { count: mergeForm.utterances.length })"
                   style="margin-top: 12px;"
                 />
               </div>
@@ -535,7 +538,7 @@
                   v-model="mergeForm.negativeSamplesText" 
                   type="textarea" 
                   :rows="6"
-                  :placeholder="`从两个路由合并的负例，每行一条\n当前共 ${mergeForm.negative_samples.length} 条`"
+                  :placeholder="$t('diagnostics.mergedNegativeSamplesPlaceholder', { count: mergeForm.negative_samples.length })"
                   style="margin-top: 12px;"
                 />
               </div>
@@ -551,7 +554,7 @@
               :loading="mergingRoutes"
               :disabled="!mergeForm.name.trim()"
             >
-              {{ $t('diagnostics.confirmMerge') || '确认合并' }}
+              {{ $t('diagnostics.confirmMerge') }}
             </el-button>
           </div>
         </template>
@@ -572,7 +575,7 @@
                 v-model="editingPoint.newUtterance" 
                 type="textarea" 
                 :rows="4"
-                placeholder="请输入新的语料内容..."
+                :placeholder="$t('diagnostics.inputNewUtterancePlaceholder')"
               />
             </el-form-item>
           </el-form>
@@ -734,8 +737,8 @@ const processedRationalization = computed(() => {
   
   // 更全方位的替换，处理各种可能的 A/B 引用
   return text
-    .replace(/意图\s*[A1]/g, `“${nameA}”`)
-    .replace(/意图\s*[B2]/g, `“${nameB}”`)
+    .replace(/(?:意图|Intent)\s*[A1]/gi, `“${nameA}”`)
+    .replace(/(?:意图|Intent)\s*[B2]/gi, `“${nameB}”`)
     .replace(/Agent\s*[A1]/gi, `“${nameA}”`)
     .replace(/Agent\s*[B2]/gi, `“${nameB}”`)
     .replace(/Route\s*[A1]/gi, `“${nameA}”`)
@@ -795,7 +798,7 @@ const triggerRepairSuggestions = async () => {
     const response = await getRepairSuggestions(
       currentSourceRoute.value.route_id, 
       currentOverlap.value.target_route_id,
-      true // Request negative samples
+      true // Request Negative Utterances
     );
     suggestion.value = response.data;
     selectedNewUtterances.value = new Array(suggestion.value.new_utterances.length).fill(true);
@@ -805,9 +808,9 @@ const triggerRepairSuggestions = async () => {
     console.error('Failed to get repair suggestions:', error);
     // 检查是否是超时错误
     if (error.response?.status === 504 || error.isTimeout || error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-      ElMessage.error(t('diagnostics.repairTimeout') || '请求超时，LLM处理时间较长，请稍后重试或检查后端服务状态');
+      ElMessage.error(t('diagnostics.repairTimeout'));
     } else {
-      ElMessage.warning(t('diagnostics.repairError') || '获取修复建议失败，请稍后重试');
+      ElMessage.warning(t('diagnostics.repairError'));
     }
   } finally {
     repairLoading.value = false;
@@ -815,11 +818,11 @@ const triggerRepairSuggestions = async () => {
 };
 
 const handleAddUtterance = (routeId: number) => {
-  ElMessageBox.prompt('请输入新语料', '新增语料', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
+  ElMessageBox.prompt(t('diagnostics.inputNewUtterancePrompt'), t('diagnostics.inputNewUtteranceTitle'), {
+    confirmButtonText: t('common.confirm'),
+    cancelButtonText: t('common.cancel'),
     inputPattern: /.+/,
-    inputErrorMessage: '语料不能为空'
+    inputErrorMessage: t('diagnostics.inputNewUtteranceError')
   }).then(({ value }) => {
     if (routeId === currentSourceRoute.value?.route_id) {
       sourceUtterances.value = [...sourceUtterances.value, value];
@@ -827,7 +830,7 @@ const handleAddUtterance = (routeId: number) => {
       targetUtterances.value = [...targetUtterances.value, value];
     }
     isDirty.value = true;
-    ElMessage.success('语料已添加到本地，请点击“重新检测”同步');
+    ElMessage.success(t('diagnostics.utteranceAdded'));
   }).catch(() => {});
 };
 
@@ -995,7 +998,7 @@ const handleApplyPointEdit = async () => {
 
   isDirty.value = true;
   pointEditDialogVisible.value = false;
-  ElMessage.success('已更新本地语料，请点击“重新检测”同步');
+  ElMessage.success(t('diagnostics.utteranceUpdated'));
 };
 
 const handleDeletePoint = async () => {
@@ -1014,7 +1017,7 @@ const handleDeletePoint = async () => {
 
     isDirty.value = true;
     pointEditDialogVisible.value = false;
-    ElMessage.success('已从本地列表移除，请点击“重新检测”同步');
+    ElMessage.success(t('diagnostics.utteranceRemoved'));
   } catch (error) {
     // ignore
   }
@@ -1032,7 +1035,7 @@ const handleDeleteUtterance = async (utterance: string, routeId: number) => {
       targetUtterances.value = targetUtterances.value.filter(u => u !== utterance);
     }
     isDirty.value = true;
-    ElMessage.success('已从本地列表移除，点击“重新检测”同步到后端');
+    ElMessage.success(t('diagnostics.utteranceRemoved'));
   } catch (error) {
     // ignore
   }
@@ -1063,8 +1066,8 @@ const handleSetAsNegative = async (utterance: string, routeId: number) => {
     if (isAlreadyNegative) {
       // 移除负例
       await ElMessageBox.confirm(
-        t('diagnostics.removeNegativeConfirm', { utterance }) || `确定要将"${utterance}"从负例中移除吗？`,
-        t('common.warning') || '警告',
+        t('diagnostics.removeNegativeConfirm', { utterance }),
+        t('common.warning'),
         { type: 'warning' }
       );
       
@@ -1077,12 +1080,12 @@ const handleSetAsNegative = async (utterance: string, routeId: number) => {
         targetNegativeSamples.value = updatedNegatives;
       }
       
-      ElMessage.success(t('diagnostics.negativeRemoved') || '已从负例中移除');
+      ElMessage.success(t('diagnostics.negativeRemoved'));
     } else {
       // 添加负例
       await ElMessageBox.confirm(
-        t('diagnostics.addNegativeConfirm', { utterance }) || `确定要将"${utterance}"添加为负例吗？\n负例用于排除不应该匹配到该路由的查询。\n注意：该语料将从正向例子中自动移除。`,
-        t('diagnostics.addNegativeTitle') || '添加负例',
+        t('diagnostics.addNegativeConfirm', { utterance }),
+        t('diagnostics.addNegativeTitle'),
         { type: 'info' }
       );
       
@@ -1109,15 +1112,15 @@ const handleSetAsNegative = async (utterance: string, routeId: number) => {
         targetNegativeSamples.value = updatedNegatives;
       }
       
-      ElMessage.success(t('diagnostics.negativeAdded') || '已添加为负例，并从正向例子中移除');
+      ElMessage.success(t('diagnostics.negativeAdded'));
     }
     
     // 标记为已修改，提示用户重新检测
     isDirty.value = true;
   } catch (error: any) {
     if (error !== 'cancel') {
-      console.error('Failed to update negative samples:', error);
-      ElMessage.error(t('diagnostics.negativeUpdateError') || '更新负例失败');
+      console.error('Failed to update Negative Utterances:', error);
+      ElMessage.error(t('diagnostics.negativeUpdateError'));
     }
   }
 };
@@ -1161,7 +1164,7 @@ const handleDrop = async (toRouteId: number) => {
   }
 
   isDirty.value = true;
-  ElMessage.info('语料已在本地移动，请点击“重新检测”同步');
+  ElMessage.info(t('diagnostics.utteranceMoved'));
 };
 
 const applyRepairAction = async () => {
@@ -1195,18 +1198,21 @@ const applyRepairAction = async () => {
       await addNegativeSamples(currentSourceRoute.value.route_id, { negative_samples: updatedNegativeSamples });
     }
     
-    // 5. 只同步这两个路由的向量数据库（不进行全量同步）
+    // 5. 不再自动同步向量数据库，等待用户点击“开始扫描”
+    /*
     const routeIds = [
       currentSourceRoute.value.route_id,
       currentOverlap.value.target_route_id
     ];
     await syncRoutes(routeIds);
+    */
     
     ElMessage.success(t('diagnostics.repairApplied'));
     repairDialogVisible.value = false;
-    runDiagnostics(); // 刷新诊断结果
+    // 不再自动刷新诊断结果
+    // runDiagnostics(); 
   } catch (error: any) {
-    ElMessage.error(t('diagnostics.applyError') || 'Failed to apply repair');
+    ElMessage.error(t('diagnostics.applyError'));
   } finally {
     applyingRepair.value = false;
   }
@@ -1609,17 +1615,17 @@ const handleSyncAndRedetect = async () => {
     
     if (!updatedOverlap) {
       // 冲突已解决，退出浮窗
-      ElMessage.success(t('diagnostics.noOverlap') || '该冲突已成功解决');
+      ElMessage.success(t('diagnostics.noOverlap'));
       repairDialogVisible.value = false;
       
       // 如果此时所有冲突都解决了，额外提示
       if (results.value.length === 0) {
-        ElMessage.success('恭喜！所有路由冲突均已清除');
+        ElMessage.success(t('diagnostics.allConflictsResolved'));
       }
     } else {
       // 冲突仍然存在，更新数据并继续提示用户
       currentOverlap.value = updatedOverlap;
-      ElMessage.warning('冲突尚未完全解决，已根据最新语料重新计算冲突点');
+      ElMessage.warning(t('diagnostics.conflictNotResolved'));
       
       // 重新加载相关视图以反映最新状态
       await loadUmap();
@@ -1630,7 +1636,7 @@ const handleSyncAndRedetect = async () => {
     isDirty.value = false;
   } catch (error) {
     console.error('Failed to sync and redetect:', error);
-    ElMessage.error(t('common.error') || '同步或重新检测失败');
+    ElMessage.error(t('diagnostics.syncFailed'));
   } finally {
     redetectLoading.value = false;
     fullPageLoading.value = false;
@@ -1660,7 +1666,10 @@ const handleOpenMergeDialog = async () => {
   // 设置表单默认值
   mergeForm.value = {
     name: `${currentSourceRoute.value.route_name} + ${currentOverlap.value.target_route_name}`,
-    description: `合并自 "${currentSourceRoute.value.route_name}" 和 "${currentOverlap.value.target_route_name}"`,
+    description: t('diagnostics.mergedDescription', {
+      source: currentSourceRoute.value.route_name,
+      target: currentOverlap.value.target_route_name
+    }),
     utterances: mergedUtterances,
     negative_samples: mergedNegativeSamples,
     utterancesText: mergedUtterances.join('\n'),
@@ -1689,7 +1698,7 @@ const handleMergeRoutes = async () => {
   if (!currentSourceRoute.value || !currentOverlap.value) return;
   
   if (!mergeForm.value.name.trim()) {
-    ElMessage.warning('请输入新路由名称');
+    ElMessage.warning(t('diagnostics.inputRouteName'));
     return;
   }
   
@@ -1698,8 +1707,8 @@ const handleMergeRoutes = async () => {
       t('diagnostics.mergeConfirm', {
         source: currentSourceRoute.value.route_name,
         target: currentOverlap.value.target_route_name
-      }) || `确定要合并路由 "${currentSourceRoute.value.route_name}" 和 "${currentOverlap.value.target_route_name}" 吗？此操作不可撤销。`,
-      t('common.warning') || '警告',
+      }),
+      t('common.warning'),
       { type: 'warning' }
     );
     
@@ -1712,7 +1721,7 @@ const handleMergeRoutes = async () => {
     const targetRoute = allRoutesRes.data.find(r => r.id === currentOverlap.value?.target_route_id);
     
     if (!sourceRoute || !targetRoute) {
-      throw new Error('无法找到要合并的路由');
+      throw new Error(t('diagnostics.routeNotFound'));
     }
     
     // 2. 创建新路由（使用两个路由中较高的阈值）
@@ -1743,11 +1752,11 @@ const handleMergeRoutes = async () => {
     mergeDialogVisible.value = false;
     repairDialogVisible.value = false;
     
-    ElMessage.success(`路由合并成功！新路由 ID: ${newRouteId}`);
+    ElMessage.success(t('diagnostics.mergeSuccess', { id: newRouteId }));
   } catch (error: any) {
     if (error !== 'cancel') {
       console.error('Failed to merge routes:', error);
-      ElMessage.error('合并路由失败：' + (error.message || '未知错误'));
+      ElMessage.error(t('diagnostics.mergeFailed', { error: error.message || t('diagnostics.unknownError') }));
     }
   } finally {
     mergingRoutes.value = false;

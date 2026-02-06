@@ -19,7 +19,11 @@ class Config:
     # Flask配置
     FLASK_HOST: str = os.getenv("FLASK_HOST", "0.0.0.0")
     FLASK_PORT: int = int(os.getenv("FLASK_PORT", 5000))
-    FLASK_DEBUG: bool = os.getenv("FLASK_DEBUG", "False").lower() in ("true", "1", "yes")
+    FLASK_DEBUG: bool = os.getenv("FLASK_DEBUG", "False").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
 
     # Qdrant配置
     QDRANT_URL: str = os.getenv("QDRANT_URL")
@@ -81,8 +85,12 @@ class Config:
     AGENT_REPAIR_PROMPT: str = os.getenv("AGENT_REPAIR_PROMPT", "")
 
     # 诊断阈值配置
-    REGION_THRESHOLD_SIGNIFICANT: float = float(os.getenv("REGION_THRESHOLD_SIGNIFICANT", 0.0))
-    INSTANCE_THRESHOLD_AMBIGUOUS: float = float(os.getenv("INSTANCE_THRESHOLD_AMBIGUOUS", 0.0))
+    REGION_THRESHOLD_SIGNIFICANT: float = float(
+        os.getenv("REGION_THRESHOLD_SIGNIFICANT", 0.0)
+    )
+    INSTANCE_THRESHOLD_AMBIGUOUS: float = float(
+        os.getenv("INSTANCE_THRESHOLD_AMBIGUOUS", 0.0)
+    )
 
     @classmethod
     def get_settings_path(cls) -> Path:
@@ -92,7 +100,7 @@ class Config:
     @classmethod
     def load(cls):
         """从文件加载配置并应用优先级覆盖
-        
+
         优先级顺序 (由低到高):
         1. 类属性默认值
         2. 环境变量 (Level 2: 基础设施配置)

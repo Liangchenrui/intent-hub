@@ -84,14 +84,14 @@ def import_routes():
 @app.route("/routes/<int:route_id>/negative-samples", methods=["POST"])
 @require_auth
 def add_negative_samples(route_id: int):
-    """Add negative samples for route."""
+    """Add Negative Utterances for route."""
     return routes.add_negative_samples(route_id)
 
 
 @app.route("/routes/<int:route_id>/negative-samples", methods=["DELETE"])
 @require_auth
 def delete_negative_samples(route_id: int):
-    """Delete all negative samples for route."""
+    """Delete all Negative Utterances for route."""
     return routes.delete_negative_samples(route_id)
 
 
@@ -166,11 +166,13 @@ def init_app():
     try:
         from intent_hub.services.diagnostic_service import DiagnosticService
         from intent_hub.utils.logger import logger
+
         diagnostic_service = DiagnosticService(component_manager)
         diagnostic_service.run_async_diagnostics("full")
         logger.info("Async full diagnostics started")
     except Exception as e:
         from intent_hub.utils.logger import logger
+
         logger.error(f"Failed to start diagnostics: {e}")
 
     return app
@@ -184,11 +186,13 @@ if __name__ == "__main__":
     try:
         from intent_hub.services.diagnostic_service import DiagnosticService
         from intent_hub.utils.logger import logger
+
         diagnostic_service = DiagnosticService(component_manager)
         diagnostic_service.run_async_diagnostics("full")
         logger.info("Manual startup: Async full diagnostics started")
     except Exception as e:
         from intent_hub.utils.logger import logger
+
         logger.error(f"Manual startup: Failed to start diagnostics: {e}")
 
     app.run(host=Config.FLASK_HOST, port=Config.FLASK_PORT, debug=Config.FLASK_DEBUG)

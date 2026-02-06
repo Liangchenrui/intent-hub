@@ -171,7 +171,6 @@
                   </el-tag>
                 </el-tooltip>
                 <span v-if="!row.negative_samples || row.negative_samples.length === 0" class="empty-text">
-                  无
                 </span>
               </div>
             </template>
