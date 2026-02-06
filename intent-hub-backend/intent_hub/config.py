@@ -12,6 +12,32 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 # 默认数据目录：优先使用环境变量，否则使用项目根目录下的 data 文件夹
 DATA_DIR = Path(os.getenv("INTENT_HUB_DATA_DIR", str(PROJECT_ROOT / "data")))
 
+# 新创建 settings.json 时写入的默认提示词
+DEFAULT_UTTERANCE_GENERATION_PROMPT = """你是一个资深的用户意图分析专家。你的任务是为特定的 AI Agent 生成高质量的测试数据集（Utterances），用于后续的意图识别和路由分发系统训练。 ### Agent 背景信息 - **Agent 名称**: {name} - **功能描述**: {description} - **参考示例（请参照这些示例的风格和范围，生成新的句子，但绝对不能重复这些示例）**: {reference_utterances} ### 生成要求 你需要生成 {count} 条**全新的**用户提问（必须与参考示例不同），请严格遵守以下准则： 1. **分布控制**：    - **关键词/短语 (50%)**: 极其简短，如"查天气"、"翻译一下"、"写代码"。这类词对路由最关键。    - **简单指令 (50%)**: 直接的命令句，如"帮我写个请假条"、"帮我分析这行代码"。 2. **多样性与覆盖面**：    - 提取描述中的"核心动词" and "核心名词"，进行交叉组合。    - 包含同义词替换（例如：从"预定"扩展到"帮我订一个"、"我想约一个"）。    - 必须沿用参考示例的语气和专业深度，但不要重复原话。 3. **路由判别性**：    - 生成的提问必须与该 Agent 的核心功能高度相关，避免产生可能导致路由误判到其他通用 Agent 的极其模糊的句子。 4. **格式要求**：    - 仅输出生成的问题列表，不要包含任何解释性文字。 {format_instructions}"""
+
+DEFAULT_AGENT_REPAIR_PROMPT = """## 角色设定 你是一个**资深的 NLU / 用户意图分析专家**。 ## 任务背景 当前系统中 {name_a} 与 {name_b} 在语义空间中存在显著重叠，导致路由模型出现误判。 你的任务是通过生成**高质量、强判别性的语料**，对 {name_a} 进行**语义修复**，强化其可识别特征，并主动规避 {name_b} 的语义边界。 --- ## 意图背景信息 ### {name_a} - **名称**: {name_a} - **描述**: {desc_a} - **参考示例（仅用于风格与范围参考，禁止复用或改写）**: {utterances_a} ### {name_b} - **名称**: {name_b} - **描述**: {desc_b} ### 高频冲突例句（真实误判样本） {conflicts} --- ## 生成要求（必须严格遵守） ### 1. 语料生成数量与分布（仅适用于 new_utterances） 为 {name_a} 生成 **5 条全新的用户提问**，并严格控制以下比例： - **关键词 / 短语（≈50%）** - 极简、去语境、偏触发式 - 明确体现 {name_a} 的**核心动词 / 核心名词** - **简单指令（≈50%）** - 清晰、直接的命令式表达 - 明确指向 {name_a} 的**能力边界** --- ### 2. 判别性与修复导向（核心要求） - 明确**强化 {name_a} 的专属特征词、操作对象或约束条件** - **显式避开**： - {name_b} 的核心动词 - {name_b} 的典型对象 - 容易引发歧义的抽象或泛化表达 - 所有新例句必须落在 {name_a} 的**安全语义区**内 --- ### 3. 负面约束样本（negative_samples） 生成 **3 条负面约束例句**，要求： - 表面上与 {name_a} **高度相似** - 但由于**关键动词 / 对象 / 目标发生偏移** - **语义上明确不属于 {name_a}** - 用于训练模型：**不要将这些输入路由到 {name_a}** --- ### 4. 多样性要求 - 对 {name_a} 的**核心动词、核心名词**进行同义替换 - 覆盖不同句式与指令粒度 - 保持与参考示例一致的**语气与专业深度** - **禁止**复用、拼接或轻微改写任何已有示例 --- ## 输出格式（必须严格一致） 请**仅**按以下 JSON 格式输出，不要包含任何解释性文字或多余字段：
+json
+{{
+  "new_utterances": [
+    "生成的全新例句 1",
+    "生成的全新例句 2",
+    "生成的全新例句 3",
+    "生成的全新例句 4",
+    "生成的全新例句 5"
+  ],
+  "negative_samples": [
+    "负面约束例句 1",
+    "负面约束例句 2",
+    "负面约束例句 3"
+  ],
+  "rationalization": "简要说明本次修复如何强化 `{name_a}` 的判别特征，并与 `{name_b}` 拉开语义距离"
+  }
+}}
+
+注意：
+- 输出中不得包含任何除上述 JSON 以外的内容
+- 所有生成句子必须是全新且未出现过的"""
+
 
 class Config:
     """应用配置类"""
@@ -128,6 +154,20 @@ class Config:
         path = cls.get_settings_path()
         # 确保数据目录存在
         path.parent.mkdir(parents=True, exist_ok=True)
+
+        # 若 settings.json 不存在，则创建并写入默认配置（含默认提示词）
+        if not path.exists():
+            default_settings = cls.to_dict()
+            default_settings["UTTERANCE_GENERATION_PROMPT"] = (
+                DEFAULT_UTTERANCE_GENERATION_PROMPT
+            )
+            default_settings["AGENT_REPAIR_PROMPT"] = DEFAULT_AGENT_REPAIR_PROMPT
+            try:
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(default_settings, f, indent=4, ensure_ascii=False)
+                logger.info("已创建 settings.json 并写入默认提示词")
+            except Exception as e:
+                logger.error(f"创建默认 settings.json 失败: {e}")
 
         if path.exists():
             try:
