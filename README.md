@@ -4,6 +4,8 @@ A static routing system based on vector similarity that dispatches user requests
 
 **[English](README.md)** | **[中文](README.zh-CN.md)**
 
+📹 **Video Demo:** [Watch on YouTube](https://youtu.be/bWHMFci6Pkc?si=z7W_GVkbC3i0_Udp)
+
 ---
 
 ## 🗺️ Navigation & Quick Start

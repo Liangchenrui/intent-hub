@@ -4,6 +4,8 @@
 
 **[English](README.md)** | **[中文](README.zh-CN.md)**
 
+📹 **视频演示：** [在 YouTube 观看](https://youtu.be/bWHMFci6Pkc?si=z7W_GVkbC3i0_Udp)
+
 ---
 
 ## 🗺️ 导航与快速开始
